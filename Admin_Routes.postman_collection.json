@@ -1,0 +1,202 @@
+{
+  "info": {
+    "name": "Course Archiver - Admin Routes",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Login as Super Admin",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": {
+                "email": "super.admin@university.edu",
+                "password": "SuperAdmin123!"
+              },
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Login as Admin",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": {
+                "email": "admin@university.edu",
+                "password": "Admin123!"
+              },
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Super Admin",
+      "item": [
+        {
+          "name": "Create Admin User",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/super-admin/admins",
+            "headers": {
+              "Authorization": "Bearer {{super_admin_token}}",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"sadmansakib452@gmail.com\",\n  \"name\": \"System Admin\",\n  \"temporaryPassword\": \"Admin123\",\n  \"departmentCode\": \"CSE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "List All Admins",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/super-admin/admins",
+            "headers": {
+              "Authorization": "Bearer {{super_admin_token}}"
+            }
+          }
+        },
+        {
+          "name": "Update System Settings",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/super-admin/settings",
+            "headers": {
+              "Authorization": "Bearer {{super_admin_token}}"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": {
+                "departmentName": "Computer Science & Engineering",
+                "departmentCode": "CSE",
+                "maxFileSize": 10485760,
+                "allowedFileTypes": ".pdf,.doc,.docx,.ppt,.pptx"
+              },
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Get System Stats",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/super-admin/stats",
+            "headers": {
+              "Authorization": "Bearer {{super_admin_token}}"
+            }
+          }
+        },
+        {
+          "name": "Get Audit Logs",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/super-admin/audit-logs",
+            "headers": {
+              "Authorization": "Bearer {{super_admin_token}}"
+            },
+            "params": {
+              "startDate": "2024-01-01",
+              "endDate": "2024-12-31",
+              "action": "USER_LOGIN"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Create Faculty",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/admin/faculty",
+            "headers": {
+              "Authorization": "Bearer {{admin_token}}"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": {
+                "email": "faculty@university.edu",
+                "name": "Faculty Member",
+                "department": "CSE",
+                "designation": "Assistant Professor"
+              },
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "List All Faculty",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/admin/faculty",
+            "headers": {
+              "Authorization": "Bearer {{admin_token}}"
+            }
+          }
+        },
+        {
+          "name": "Update Faculty",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/admin/faculty/:id",
+            "headers": {
+              "Authorization": "Bearer {{admin_token}}"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": {
+                "name": "Updated Faculty Name",
+                "designation": "Associate Professor"
+              },
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000"
+    }
+  ]
+} 

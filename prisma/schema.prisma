@@ -1,0 +1,288 @@
+// This is your Prisma schema file
+
+generator client {
+    provider = "prisma-client-js"
+}
+
+datasource db {
+    provider = "mongodb"
+    url      = env("DATABASE_URL")
+}
+
+// Enums
+enum UserRole {
+    FACULTY // Can manage their own courses and files
+    CHAIRPERSON // Can manage faculty and approve materials
+    ADMIN // System administration and user management
+    SUPER_ADMIN // System-wide access and admin management
+}
+
+enum Semester {
+    FALL
+    SPRING
+    SUMMER
+}
+
+enum FileStatus {
+    PENDING
+    IN_REVIEW
+    APPROVED
+    REJECTED
+}
+
+// Types
+type FileData {
+    url       String
+    version   Int
+    updatedAt DateTime
+    hash      String?
+}
+
+// User model: Authentication and authorization
+model User {
+    id            String         @id @default(auto()) @map("_id") @db.ObjectId
+    email         String         @unique
+    name          String
+    password      String
+    role          UserRole
+    department    String // Department code
+    isActive      Boolean        @default(true)
+    createdAt     DateTime       @default(now())
+    updatedAt     DateTime       @updatedAt
+    refreshTokens RefreshToken[]
+    googleId      String? // Remove @unique constraint for now
+
+    // Relations
+    accounts       Account[]
+    sessions       Session[]
+    courseFiles    CourseFiles[]
+    notifications  Notification[]
+    auditLogs      AuditLog[]
+    passwordResets PasswordReset[]
+
+    // Timestamps
+    Department   Department? @relation(fields: [departmentId], references: [id])
+    departmentId String?     @db.ObjectId
+
+    @@index([role])
+}
+
+// Faculty Members model
+model FacultyMember {
+    id          String   @id @default(auto()) @map("_id") @db.ObjectId
+    shortName   String   @unique
+    name        String
+    email       String   @unique
+    designation String
+    department  String // Store department as string
+    isActive    Boolean  @default(true)
+    courses     Course[]
+
+    // Timestamps
+    createdAt    DateTime    @default(now())
+    updatedAt    DateTime    @updatedAt
+    Department   Department? @relation(fields: [departmentId], references: [id])
+    departmentId String?     @db.ObjectId
+}
+
+// Course model
+model Course {
+    id       String   @id @default(auto()) @map("_id") @db.ObjectId
+    code     String // e.g., CSE101
+    name     String
+    section  Int
+    semester Semester
+    year     Int
+
+    // Relations
+    faculty     FacultyMember @relation(fields: [facultyId], references: [id])
+    facultyId   String        @db.ObjectId
+    courseFiles CourseFiles[]
+
+    // Timestamps
+    createdAt    DateTime    @default(now())
+    updatedAt    DateTime    @updatedAt
+    Department   Department? @relation(fields: [departmentId], references: [id])
+    departmentId String?     @db.ObjectId
+
+    // Ensure unique course section per semester
+    @@unique([code, section, semester, year])
+    @@index([facultyId])
+}
+
+// Course Files model
+model CourseFiles {
+    id       String     @id @default(auto()) @map("_id") @db.ObjectId
+    courseId String     @db.ObjectId
+    userId   String     @db.ObjectId
+    fileType String // e.g., "course_outline", "mid_exam"
+    status   FileStatus @default(PENDING)
+    fileData FileData
+    comments String?
+    semester Semester
+    year     Int
+
+    // Relations
+    user          User           @relation(fields: [userId], references: [id])
+    course        Course         @relation(fields: [courseId], references: [id])
+    notifications Notification[]
+
+    // Timestamps
+    createdAt DateTime   @default(now())
+    updatedAt DateTime   @updatedAt
+    MidExam   MidExam[]
+    QuizExam  QuizExam[]
+    FinalExam FinalExam?
+}
+
+// Exam models
+model MidExam {
+    id         String @id @default(auto()) @map("_id") @db.ObjectId
+    examNumber Int // 1 or 2
+
+    // File data
+    question FileData?
+    highest  FileData?
+    average  FileData?
+    marginal FileData?
+
+    // Status
+    isCompleted Boolean @default(false)
+
+    // Relation
+    courseFiles   CourseFiles @relation(fields: [courseFilesId], references: [id])
+    courseFilesId String      @db.ObjectId
+
+    @@unique([courseFilesId, examNumber])
+}
+
+model QuizExam {
+    id         String @id @default(auto()) @map("_id") @db.ObjectId
+    quizNumber Int
+
+    // File data
+    question FileData?
+    highest  FileData?
+    average  FileData?
+    marginal FileData?
+
+    // Status
+    isCompleted Boolean @default(false)
+
+    // Relation
+    courseFiles   CourseFiles @relation(fields: [courseFilesId], references: [id])
+    courseFilesId String      @db.ObjectId
+
+    @@unique([courseFilesId, quizNumber])
+}
+
+model FinalExam {
+    id String @id @default(auto()) @map("_id") @db.ObjectId
+
+    // File data
+    question FileData?
+    highest  FileData?
+    average  FileData?
+    marginal FileData?
+
+    // Status
+    isCompleted Boolean @default(false)
+
+    // Relation
+    courseFiles   CourseFiles @relation(fields: [courseFilesId], references: [id])
+    courseFilesId String      @db.ObjectId
+
+    @@unique([courseFilesId])
+}
+
+// Authentication models
+model Account {
+    id                String @id @default(auto()) @map("_id") @db.ObjectId
+    userId            String @db.ObjectId
+    type              String
+    provider          String
+    providerAccountId String
+    user              User   @relation(fields: [userId], references: [id])
+
+    @@unique([provider, providerAccountId])
+}
+
+model Session {
+    id           String   @id @default(auto()) @map("_id") @db.ObjectId
+    sessionToken String   @unique
+    userId       String   @db.ObjectId
+    expires      DateTime
+    user         User     @relation(fields: [userId], references: [id])
+}
+
+model RefreshToken {
+    id        String   @id @default(auto()) @map("_id") @db.ObjectId
+    token     String   @unique
+    userId    String   @db.ObjectId
+    user      User     @relation(fields: [userId], references: [id])
+    issuedAt  DateTime @default(now())
+    expiresAt DateTime
+    isRevoked Boolean  @default(false)
+
+    @@index([userId])
+}
+
+// Notification model
+model Notification {
+    id      String  @id @default(auto()) @map("_id") @db.ObjectId
+    message String
+    type    String
+    isRead  Boolean @default(false)
+
+    // Relations
+    user          User        @relation(fields: [userId], references: [id])
+    userId        String      @db.ObjectId
+    courseFiles   CourseFiles @relation(fields: [courseFilesId], references: [id])
+    courseFilesId String      @db.ObjectId
+
+    createdAt DateTime @default(now())
+
+    @@index([userId, isRead])
+}
+
+// Audit logging
+model AuditLog {
+    id        String   @id @default(auto()) @map("_id") @db.ObjectId
+    userId    String   @db.ObjectId
+    user      User     @relation(fields: [userId], references: [id])
+    action    String
+    details   Json
+    createdAt DateTime @default(now())
+
+    @@index([userId, action])
+}
+
+// Add this model to your schema
+model PasswordReset {
+    id        String   @id @default(auto()) @map("_id") @db.ObjectId
+    token     String   @unique
+    userId    String   @db.ObjectId
+    user      User     @relation(fields: [userId], references: [id])
+    expiresAt DateTime
+    isUsed    Boolean  @default(false)
+    createdAt DateTime @default(now())
+
+    @@index([userId])
+}
+
+// Add department management
+model Department {
+    id       String  @id @default(auto()) @map("_id") @db.ObjectId
+    code     String  @unique // e.g., "CSE"
+    name     String // e.g., "Computer Science & Engineering"
+    isActive Boolean @default(true)
+
+    // Relations
+    users   User[]
+    faculty FacultyMember[]
+    courses Course[]
+
+    // Timestamps
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+}
