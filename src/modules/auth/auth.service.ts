@@ -16,6 +16,7 @@ import { randomBytes } from 'crypto';
 import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { MailService } from '../mail/mail.service';
+import { UserStatus } from '@prisma/client';
 
 @Injectable()
 export class AuthService {
@@ -96,6 +97,11 @@ export class AuthService {
 
     if (!user || !user.password) {
       throw new UnauthorizedException('Invalid credentials');
+    }
+
+    // Check if user is deleted/archived
+    if (user.status === UserStatus.ARCHIVED || user.deletedAt) {
+      throw new UnauthorizedException('This account has been deactivated');
     }
 
     // Verify password

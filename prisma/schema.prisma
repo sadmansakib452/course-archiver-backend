@@ -30,6 +30,12 @@ enum FileStatus {
     REJECTED
 }
 
+enum UserStatus {
+    ACTIVE
+    INACTIVE
+    ARCHIVED
+}
+
 // Types
 type FileData {
     url       String
@@ -40,31 +46,54 @@ type FileData {
 
 // User model: Authentication and authorization
 model User {
-    id            String         @id @default(auto()) @map("_id") @db.ObjectId
-    email         String         @unique
-    name          String
-    password      String
-    role          UserRole
-    department    String // Department code
-    isActive      Boolean        @default(true)
-    createdAt     DateTime       @default(now())
-    updatedAt     DateTime       @updatedAt
-    refreshTokens RefreshToken[]
-    googleId      String? // Remove @unique constraint for now
+    id         String     @id @default(auto()) @map("_id") @db.ObjectId
+    email      String     @unique
+    name       String
+    password   String
+    role       UserRole
+    department String
+    status     UserStatus @default(ACTIVE)
 
-    // Relations
-    accounts       Account[]
-    sessions       Session[]
-    courseFiles    CourseFiles[]
-    notifications  Notification[]
-    auditLogs      AuditLog[]
-    passwordResets PasswordReset[]
+    // Soft delete fields
+    deletedAt     DateTime?
+    deletedBy     String?   @db.ObjectId
+    deletedReason String?
+
+    // Archive fields
+    archivedAt     DateTime?
+    archivedBy     String?   @db.ObjectId
+    archivedReason String?
+
+    // OAuth fields
+    isOAuthUser Boolean @default(false)
+    googleId    String?
 
     // Timestamps
-    Department   Department? @relation(fields: [departmentId], references: [id])
-    departmentId String?     @db.ObjectId
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
 
-    @@index([role])
+    // Relations
+    accounts      Account[]
+    sessions      Session[]
+    courseFiles   CourseFiles[]
+    notifications Notification[]
+    auditLogs     AuditLog[]
+    refreshTokens RefreshToken[]
+    UserActivity  UserActivity[]
+    Department    Department?    @relation(fields: [departmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+    departmentId  String?        @db.ObjectId
+
+    // Archive relation
+    archivedByUser User?  @relation("ArchivedUsers", fields: [archivedBy], references: [id], onDelete: NoAction, onUpdate: NoAction)
+    archivedUsers  User[] @relation("ArchivedUsers")
+
+    // Delete relation
+    deletedByUser User?           @relation("DeletedUsers", fields: [deletedBy], references: [id], onDelete: NoAction, onUpdate: NoAction)
+    deletedUsers  User[]          @relation("DeletedUsers")
+    PasswordReset PasswordReset[]
+
+    @@index([role, status])
+    @@index([deletedAt])
 }
 
 // Faculty Members model
@@ -81,7 +110,7 @@ model FacultyMember {
     // Timestamps
     createdAt    DateTime    @default(now())
     updatedAt    DateTime    @updatedAt
-    Department   Department? @relation(fields: [departmentId], references: [id])
+    Department   Department? @relation(fields: [departmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
     departmentId String?     @db.ObjectId
 }
 
@@ -95,15 +124,15 @@ model Course {
     year     Int
 
     // Relations
-    faculty     FacultyMember @relation(fields: [facultyId], references: [id])
+    faculty     FacultyMember @relation(fields: [facultyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
     facultyId   String        @db.ObjectId
     courseFiles CourseFiles[]
 
     // Timestamps
-    createdAt    DateTime    @default(now())
-    updatedAt    DateTime    @updatedAt
-    Department   Department? @relation(fields: [departmentId], references: [id])
-    departmentId String?     @db.ObjectId
+    createdAt    DateTime   @default(now())
+    updatedAt    DateTime   @updatedAt
+    department   Department @relation(fields: [departmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+    departmentId String     @db.ObjectId
 
     // Ensure unique course section per semester
     @@unique([code, section, semester, year])
@@ -123,8 +152,8 @@ model CourseFiles {
     year     Int
 
     // Relations
-    user          User           @relation(fields: [userId], references: [id])
-    course        Course         @relation(fields: [courseId], references: [id])
+    user          User           @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+    course        Course         @relation(fields: [courseId], references: [id], onDelete: NoAction, onUpdate: NoAction)
     notifications Notification[]
 
     // Timestamps
@@ -202,7 +231,7 @@ model Account {
     type              String
     provider          String
     providerAccountId String
-    user              User   @relation(fields: [userId], references: [id])
+    user              User   @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
     @@unique([provider, providerAccountId])
 }
@@ -212,14 +241,14 @@ model Session {
     sessionToken String   @unique
     userId       String   @db.ObjectId
     expires      DateTime
-    user         User     @relation(fields: [userId], references: [id])
+    user         User     @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
 
 model RefreshToken {
     id        String   @id @default(auto()) @map("_id") @db.ObjectId
     token     String   @unique
     userId    String   @db.ObjectId
-    user      User     @relation(fields: [userId], references: [id])
+    user      User     @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
     issuedAt  DateTime @default(now())
     expiresAt DateTime
     isRevoked Boolean  @default(false)
@@ -235,9 +264,9 @@ model Notification {
     isRead  Boolean @default(false)
 
     // Relations
-    user          User        @relation(fields: [userId], references: [id])
+    user          User        @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
     userId        String      @db.ObjectId
-    courseFiles   CourseFiles @relation(fields: [courseFilesId], references: [id])
+    courseFiles   CourseFiles @relation(fields: [courseFilesId], references: [id], onDelete: NoAction, onUpdate: NoAction)
     courseFilesId String      @db.ObjectId
 
     createdAt DateTime @default(now())
@@ -249,7 +278,7 @@ model Notification {
 model AuditLog {
     id        String   @id @default(auto()) @map("_id") @db.ObjectId
     userId    String   @db.ObjectId
-    user      User     @relation(fields: [userId], references: [id])
+    user      User     @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
     action    String
     details   Json
     createdAt DateTime @default(now())
@@ -262,7 +291,7 @@ model PasswordReset {
     id        String   @id @default(auto()) @map("_id") @db.ObjectId
     token     String   @unique
     userId    String   @db.ObjectId
-    user      User     @relation(fields: [userId], references: [id])
+    user      User     @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
     expiresAt DateTime
     isUsed    Boolean  @default(false)
     createdAt DateTime @default(now())
@@ -285,4 +314,18 @@ model Department {
     // Timestamps
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
+}
+
+// Add UserActivity model
+model UserActivity {
+    id        String   @id @default(auto()) @map("_id") @db.ObjectId
+    userId    String   @db.ObjectId
+    action    String
+    details   Json
+    ipAddress String?
+    createdAt DateTime @default(now())
+    user      User     @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+    @@index([userId, action])
+    @@index([createdAt])
 }
