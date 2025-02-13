@@ -6,8 +6,6 @@ import {
   Body,
   UseGuards,
   Request,
-  UnauthorizedException,
-  ForbiddenException,
   Query,
   Delete,
   Post,
@@ -29,18 +27,14 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import {
-  UserResponseDto,
   ArchivedUserResponseDto,
   StatusUpdateResponseDto,
-  ArchiveUserResponseDto,
 } from './dto/responses/user.response';
 import {
-  UserResponse,
   ArchivedUserResponse,
   StatusUpdateResponse,
 } from './interfaces/user-response.interface';
-import { UserStatusValidationPipe } from './pipes/user-status.pipe';
-import { ActivityListResponseDto } from './dto/activity/activity-response.dto';
+
 import { UserActivityService } from './services/activity.service';
 import { ActivityFilterDto } from './dto/activity/activity-filter.dto';
 import {
