@@ -43,3 +43,8 @@ export interface SoftDeleteResponse {
   message: string;
   user: DeletedUserResponse;
 }
+
+export interface ListUsersResponse {
+  users: UserResponse[];
+  total: number;
+}

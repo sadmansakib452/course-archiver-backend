@@ -14,15 +14,14 @@ export class UserActivityService {
   async logActivity(data: {
     userId: string;
     action: string;
-    details: Prisma.InputJsonValue;
-    ipAddress?: string;
-  }) {
-    return this.prisma.userActivity.create({
+    details?: Record<string, any>;
+  }): Promise<void> {
+    await this.prisma.userActivity.create({
       data: {
         userId: data.userId,
         action: data.action,
-        details: data.details,
-        ipAddress: data.ipAddress,
+        details: data.details || {},
+        createdAt: new Date(),
       },
     });
   }

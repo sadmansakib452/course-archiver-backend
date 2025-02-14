@@ -26,14 +26,8 @@ import {
   ApiBearerAuth,
   ApiQuery,
 } from '@nestjs/swagger';
-import {
-  ArchivedUserResponseDto,
-  StatusUpdateResponseDto,
-} from './dto/responses/user.response';
-import {
-  ArchivedUserResponse,
-  StatusUpdateResponse,
-} from './interfaces/user-response.interface';
+import { ArchivedUserResponseDto } from './dto/responses/user.response';
+import { ArchivedUserResponse } from './interfaces/user-response.interface';
 
 import { UserActivityService } from './services/activity.service';
 import { ActivityFilterDto } from './dto/activity/activity-filter.dto';
@@ -42,6 +36,17 @@ import {
   ReportType,
 } from './dto/activity/activity-report.dto';
 import { USER_ACTIVITIES } from './constants/activity.constants';
+import { ListUsersDto } from './dto/list-users.dto';
+import {
+  ListUsersResponseDto,
+  UserResponseDto,
+  UserActionResponseDto,
+} from './dto/responses/user-response.dto';
+import { PermanentDeleteUserDto } from './dto/permanent-delete-user.dto';
+import { UserProfileService } from './services/user-profile.service';
+import { UserAdminService } from './services/user-admin.service';
+import { UserStatusService } from './services/user-status.service';
+import { RequestWithUser } from '../auth/interfaces/authenticated-request.interface';
 
 @ApiTags('Users Management')
 @Controller('users')
@@ -51,6 +56,9 @@ export class UsersController {
   constructor(
     private readonly usersService: UsersService,
     private readonly activityService: UserActivityService,
+    private readonly profileService: UserProfileService,
+    private readonly adminService: UserAdminService,
+    private readonly statusService: UserStatusService,
   ) {}
 
   @Get('profile')
@@ -58,9 +66,17 @@ export class UsersController {
   @ApiResponse({
     status: 200,
     description: 'Returns user profile information',
+    type: UserResponseDto,
   })
-  async getProfile(@Request() req: { user: { id: string } }) {
-    return this.usersService.getProfile(req.user.id);
+  async getProfile(@Request() req: RequestWithUser): Promise<UserResponseDto> {
+    const userId = req.user.id;
+    const profile = await this.profileService.getProfile(userId);
+    return {
+      success: true,
+      message: 'Profile retrieved successfully',
+      timestamp: new Date(),
+      data: profile,
+    };
   }
 
   @Patch('profile')
@@ -68,41 +84,29 @@ export class UsersController {
   @ApiResponse({
     status: 200,
     description: 'Profile updated successfully',
-  })
-  @ApiResponse({
-    status: 400,
-    description: 'Invalid input data',
+    type: UserResponseDto,
   })
   async updateProfile(
-    @Request() req: { user: { id: string } },
+    @Request() req: RequestWithUser,
     @Body() updateProfileDto: UpdateProfileDto,
-  ) {
-    return this.usersService.updateProfile(req.user.id, updateProfileDto);
+  ): Promise<UserResponseDto> {
+    const userId = req.user.id;
+    return this.profileService.updateProfile(userId, updateProfileDto);
   }
 
   @Patch(':id/status')
-  @UseGuards(UserStatusGuard)
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
   @ApiOperation({ summary: 'Update user status' })
   @ApiResponse({
     status: 200,
     description: 'User status updated successfully',
-    type: StatusUpdateResponseDto,
-  })
-  @ApiResponse({
-    status: 400,
-    description: 'Invalid status value',
-  })
-  @ApiResponse({
-    status: 403,
-    description: 'Cannot update archived user',
   })
   async updateUserStatus(
     @Param('id') id: string,
     @Body() dto: UpdateUserStatusDto,
-    @Request() req: { user: { id: string } },
-  ): Promise<StatusUpdateResponse> {
-    return this.usersService.updateUserStatus(id, req.user.id, dto);
+    @Request() req: RequestWithUser,
+  ) {
+    return this.statusService.updateStatus(id, dto.status, req.user.id);
   }
 
   @Patch(':id/archive')
@@ -113,8 +117,8 @@ export class UsersController {
   async archiveUser(
     @Param('id') id: string,
     @Body() dto: ArchiveUserDto,
-    @Request() req,
-  ) {
+    @Request() req: RequestWithUser,
+  ): Promise<UserActionResponseDto> {
     return this.usersService.archiveUser(id, req.user.id, dto);
   }
 
@@ -126,8 +130,11 @@ export class UsersController {
     description: 'List of archived users',
     type: [ArchivedUserResponseDto],
   })
-  async getArchivedUsers(@Request() req): Promise<ArchivedUserResponse[]> {
-    return this.usersService.getArchivedUsers(req.user.department);
+  async getArchivedUsers(
+    @Request() req: RequestWithUser,
+  ): Promise<ArchivedUserResponse[]> {
+    const department = req.user.department || '';
+    return this.usersService.getArchivedUsers(department);
   }
 
   @Get(':id/activities')
@@ -178,22 +185,43 @@ export class UsersController {
     return this.activityService.exportActivities(id, format);
   }
 
+  @Get('all')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Get all users' })
+  @ApiResponse({
+    status: 200,
+    description: 'List of all users with pagination',
+    type: ListUsersResponseDto,
+  })
+  async getAllUsers(
+    @Query() filters: ListUsersDto,
+  ): Promise<ListUsersResponseDto> {
+    return await this.usersService.getAllUsers(filters);
+  }
+
   @Delete(':id')
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
   @ApiOperation({ summary: 'Soft delete user' })
   @ApiResponse({
     status: 200,
     description: 'User deleted successfully',
-  })
-  @ApiResponse({
-    status: 403,
-    description: 'Cannot delete super admin or already deleted user',
+    type: UserActionResponseDto,
   })
   async softDeleteUser(
     @Param('id') id: string,
-    @Request() req: { user: { id: string } },
-  ) {
-    return this.usersService.softDeleteUser(id, req.user.id);
+    @Request() req: RequestWithUser,
+  ): Promise<UserActionResponseDto> {
+    const userId = req.user.id;
+    await this.adminService.softDeleteUser(id, userId);
+
+    const response: UserActionResponseDto = {
+      success: true,
+      message: 'User deleted successfully',
+      timestamp: new Date(),
+      userId: id,
+      actionTimestamp: new Date(),
+    };
+    return response;
   }
 
   @Post(':id/restore')
@@ -202,15 +230,48 @@ export class UsersController {
   @ApiResponse({
     status: 200,
     description: 'User restored successfully',
-  })
-  @ApiResponse({
-    status: 403,
-    description: 'User is not deleted/archived',
+    type: UserActionResponseDto,
   })
   async restoreUser(
     @Param('id') id: string,
-    @Request() req: { user: { id: string } },
-  ) {
-    return this.usersService.restoreUser(id, req.user.id);
+    @Request() req: RequestWithUser,
+  ): Promise<UserActionResponseDto> {
+    const userId = req.user.id;
+    await this.adminService.restoreUser(id, userId);
+
+    const response: UserActionResponseDto = {
+      success: true,
+      message: 'User restored successfully',
+      timestamp: new Date(),
+      userId: id,
+      actionTimestamp: new Date(),
+    };
+    return response;
+  }
+
+  @Delete(':id/permanent')
+  @Roles(UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Permanently delete a user' })
+  @ApiResponse({
+    status: 200,
+    description: 'User permanently deleted',
+    type: UserActionResponseDto,
+  })
+  async permanentDeleteUser(
+    @Param('id') id: string,
+    @Body() dto: PermanentDeleteUserDto,
+    @Request() req: RequestWithUser,
+  ): Promise<UserActionResponseDto> {
+    const userId = req.user.id;
+    await this.usersService.permanentDeleteUser(id, dto, userId);
+
+    const response: UserActionResponseDto = {
+      success: true,
+      message: 'User permanently deleted',
+      timestamp: new Date(),
+      userId: id,
+      actionTimestamp: new Date(),
+    };
+    return response;
   }
 }

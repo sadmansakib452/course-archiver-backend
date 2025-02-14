@@ -20,7 +20,7 @@ export class HealthService implements OnModuleInit {
     await this.checkConnections();
   }
 
-  async checkConnections(): Promise<void> {
+  async checkConnections(): Promise<{ details: { minio: string } }> {
     try {
       // Check MongoDB connection
       await this.checkMongoDB();
@@ -28,7 +28,11 @@ export class HealthService implements OnModuleInit {
       // Check MinIO connection
       await this.checkMinIO();
 
-      console.log('All services are healthy! Application is ready.');
+      return {
+        details: {
+          minio: 'healthy',
+        },
+      };
     } catch (error) {
       console.error('Service health check failed:', error.message);
       throw new ServiceUnavailableException(

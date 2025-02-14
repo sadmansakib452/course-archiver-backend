@@ -29,4 +29,10 @@ export const envConfig = registerAs('env', () => ({
 
   // Frontend URL for reset links
   frontendUrl: process.env.FRONTEND_URL ?? 'http://localhost:3000',
+
+  cache: {
+    host: process.env.REDIS_HOST || 'localhost',
+    port: Number(process.env.REDIS_PORT || 6379),
+    ttl: Number(process.env.CACHE_TTL || 3600),
+  },
 }));

@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
@@ -14,6 +14,9 @@ import { mailConfig } from './config/mail.config';
 import { MailModule } from './modules/mail/mail.module';
 import { SuperAdminModule } from './modules/super-admin/super-admin.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { CacheModule, CacheModuleOptions } from '@nestjs/cache-manager';
+import { redisStore } from 'cache-manager-redis-store';
+import type { RedisClientOptions } from 'redis';
 
 @Module({
   imports: [
@@ -31,6 +34,17 @@ import { AdminModule } from './modules/admin/admin.module';
     MailModule,
     SuperAdminModule,
     AdminModule,
+    CacheModule.registerAsync<RedisClientOptions>({
+      isGlobal: true,
+      imports: [ConfigModule],
+      useFactory: async (configService: ConfigService) => ({
+        store: redisStore,
+        host: configService.get('cache.host', 'localhost'),
+        port: configService.get('cache.port', 6379),
+        ttl: configService.get('cache.ttl', 3600),
+      }),
+      inject: [ConfigService],
+    }),
   ],
   controllers: [AppController],
   providers: [AppService],

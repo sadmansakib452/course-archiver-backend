@@ -1,37 +1,37 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { OpenAPIObject, SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { HealthService } from './modules/health/health.service';
+import { ApiResponseInterceptor } from './common/interceptors/api-response.interceptor';
+import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { AppValidationPipe } from './common/pipes/validation.pipe';
 
 async function bootstrap() {
   try {
     const app = await NestFactory.create(AppModule);
     const configService = app.get(ConfigService);
-
-    // Debug: Print MinIO config
-    console.log('Loading with MinIO config:', {
-      endpoint: configService.get('env.minioEndpoint'),
-      port: configService.get('env.minioPort'),
-      accessKey: configService.get('env.minioAccessKey'),
-      secretKey: '***',
-    });
-
     const healthService = app.get(HealthService);
+
+    // Debug: Print MinIO config with proper typing
+    const minioConfig = {
+      endpoint: configService.get<string>('env.minioEndpoint'),
+      port: configService.get<number>('env.minioPort'),
+      accessKey: configService.get<string>('env.minioAccessKey'),
+      secretKey: '***' as const,
+    };
+    console.log('Loading with MinIO config:', minioConfig);
 
     // Ensure services are healthy before continuing
     await healthService.checkConnections();
 
     // Global pipes
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        transform: true,
-        forbidNonWhitelisted: true,
-      }),
-    );
+    app.useGlobalPipes(AppValidationPipe);
+
+    // Global interceptors and filters
+    app.useGlobalInterceptors(new ApiResponseInterceptor());
+    app.useGlobalFilters(new HttpExceptionFilter());
 
     // Security
     app.use(helmet());
@@ -50,19 +50,25 @@ async function bootstrap() {
       maxAge: 3600,
     });
 
+    // Set global prefix with exclude
+    app.setGlobalPrefix('api', {
+      exclude: ['health'], // Exclude health endpoint from /api prefix
+    });
+
     // Swagger setup
-    const config = new DocumentBuilder()
+    const swaggerConfig = new DocumentBuilder()
       .setTitle('Course Archiver API')
-      .setDescription('Course Archiver API Documentation')
+      .setDescription('API Documentation')
+      .addTag('System', 'System-related endpoints (health, status)')
+      .addTag('Auth', 'Authentication endpoints')
+      .addTag('Users', 'User management endpoints')
+      // ... other tags
       .setVersion('1.0')
       .addBearerAuth()
       .build();
 
-    const document = SwaggerModule.createDocument(app, config);
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
     SwaggerModule.setup('docs', app, document);
-
-    // Global prefix
-    app.setGlobalPrefix('api');
 
     const port = configService.get<number>('env.port', 3000);
     await app.listen(port);
@@ -76,4 +82,6 @@ async function bootstrap() {
     process.exit(1);
   }
 }
-bootstrap();
+
+// Fix floating promise
+void bootstrap();

@@ -17,6 +17,7 @@ import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { MailService } from '../mail/mail.service';
 import { UserStatus } from '@prisma/client';
+import { v4 as uuid } from 'uuid';
 
 @Injectable()
 export class AuthService {
@@ -87,31 +88,66 @@ export class AuthService {
     };
   }
 
+  private async storeRefreshToken(
+    userId: string,
+    token: string,
+  ): Promise<void> {
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7); // 7 days expiry
+
+    // First revoke all existing refresh tokens for this user
+    await this.prisma.refreshToken.updateMany({
+      where: { 
+        userId,
+        isRevoked: false 
+      },
+      data: { 
+        isRevoked: true 
+      }
+    });
+
+    // Then create the new refresh token
+    await this.prisma.refreshToken.create({
+      data: {
+        token,
+        userId,
+        expiresAt,
+        isRevoked: false,
+      },
+    });
+  }
+
   async login(loginDto: LoginDto) {
     const { email, password } = loginDto;
 
-    // Find user
     const user = await this.prisma.user.findUnique({
       where: { email },
+      select: {
+        id: true,
+        email: true,
+        password: true,
+        name: true,
+        role: true,
+        status: true,
+        department: true,
+      },
     });
 
-    if (!user || !user.password) {
+    if (!user) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // Check if user is deleted/archived
-    if (user.status === UserStatus.ARCHIVED || user.deletedAt) {
-      throw new UnauthorizedException('This account has been deactivated');
+    if (user.status === UserStatus.ARCHIVED) {
+      throw new UnauthorizedException('This account has been deleted');
     }
 
-    // Verify password
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // Generate tokens
     const tokens = await this.generateTokens(user);
+    await this.storeRefreshToken(user.id, tokens.refreshToken);
 
     return {
       user: {
@@ -119,6 +155,7 @@ export class AuthService {
         email: user.email,
         name: user.name,
         role: user.role,
+        department: user.department,
       },
       ...tokens,
     };
@@ -181,46 +218,42 @@ export class AuthService {
     };
   }
 
-  private async generateTokens(user: {
-    id: string;
-    email: string;
-    role: string;
-    department: string;
-  }) {
+  private async generateTokens(user: any) {
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
-      role: user.role as any,
+      role: user.role,
       departmentCode: user.department,
     };
 
-    const accessTokenExpiration = '15m';
-    const refreshTokenExpiration = '7d';
-
-    // Generate access token
-    const accessToken = this.jwtService.sign(payload, {
-      expiresIn: accessTokenExpiration,
-    });
-
-    // Generate refresh token
-    const refreshToken = this.jwtService.sign(payload, {
-      expiresIn: refreshTokenExpiration,
-    });
-
-    // Save refresh token
-    await this.prisma.refreshToken.create({
-      data: {
-        token: refreshToken,
-        userId: user.id,
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
-      },
-    });
+    const [accessToken, refreshToken] = await Promise.all([
+      this.jwtService.signAsync(payload),
+      // Generate unique refresh token using uuid
+      this.generateUniqueRefreshToken(),
+    ]);
 
     return {
       accessToken,
       refreshToken,
-      expiresIn: 15 * 60, // 15 minutes in seconds
+      expiresIn: 900, // 15 minutes
     };
+  }
+
+  private async generateUniqueRefreshToken(): Promise<string> {
+    // Generate a unique token using uuid
+    const token = `${uuid()}.${Date.now()}`;
+    
+    // Check if token already exists
+    const existingToken = await this.prisma.refreshToken.findUnique({
+      where: { token },
+    });
+
+    // If token exists (very unlikely), generate a new one
+    if (existingToken) {
+      return this.generateUniqueRefreshToken();
+    }
+
+    return token;
   }
 
   async requestPasswordReset(dto: RequestPasswordResetDto) {

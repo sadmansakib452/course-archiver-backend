@@ -7,7 +7,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import * as bcrypt from 'bcrypt';
 import { ConfigService } from '@nestjs/config';
-import { UserStatus, UserRole } from '@prisma/client';
+import { UserStatus, UserRole, Prisma } from '@prisma/client';
 import { ArchiveUserDto } from './dto/archive-user.dto';
 import { UpdateUserStatusDto } from './dto/update-status.dto';
 import { AuditService } from '../../common/services/audit.service';
@@ -23,6 +23,11 @@ import {
 } from './interfaces/user-response.interface';
 import { USER_ACTIVITIES } from './constants/activity.constants';
 import { UserActivityService } from './services/activity.service';
+import { ListUsersDto } from './dto/list-users.dto';
+import { ListUsersResponseDto } from './dto/responses/user-response.dto';
+import { PermanentDeleteUserDto } from './dto/permanent-delete-user.dto';
+import { UserActionResponseDto } from './dto/responses/user-action-response.dto';
+import { ErrorCode } from '../../common/constants/error-codes';
 
 @Injectable()
 export class UsersService {
@@ -80,9 +85,10 @@ export class UsersService {
 
     if (updateProfileDto.newPassword) {
       if (!updateProfileDto.currentPassword) {
-        throw new InvalidUserStatusException(
-          'Current password is required to set new password',
-        );
+        throw new InvalidUserStatusException({
+          code: ErrorCode.VALIDATION_ERROR,
+          message: 'Current password is required to set new password',
+        });
       }
 
       const isPasswordValid = await bcrypt.compare(
@@ -91,7 +97,10 @@ export class UsersService {
       );
 
       if (!isPasswordValid) {
-        throw new InvalidUserStatusException('Current password is incorrect');
+        throw new InvalidUserStatusException({
+          code: ErrorCode.VALIDATION_ERROR,
+          message: 'Current password is incorrect',
+        });
       }
 
       const salt = await bcrypt.genSalt(
@@ -181,14 +190,9 @@ export class UsersService {
     userId: string,
     currentUserId: string,
     dto: ArchiveUserDto,
-  ): Promise<ArchiveUserResponse> {
+  ): Promise<UserActionResponseDto> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: {
-        id: true,
-        role: true,
-        status: true,
-      },
     });
 
     if (!user) {
@@ -199,7 +203,7 @@ export class UsersService {
       throw new UserStatusUpdateForbiddenException();
     }
 
-    const updatedUser = await this.prisma.user.update({
+    await this.prisma.user.update({
       where: { id: userId },
       data: {
         status: UserStatus.ARCHIVED,
@@ -207,46 +211,14 @@ export class UsersService {
         archivedBy: currentUserId,
         archivedReason: dto.reason,
       },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        status: true,
-        department: true,
-        createdAt: true,
-        updatedAt: true,
-        archivedAt: true,
-        archivedReason: true,
-        archivedByUser: {
-          select: {
-            name: true,
-            role: true,
-          },
-        },
-      },
-    });
-
-    // Transform response to match interface
-    const response = {
-      ...updatedUser,
-      archivedBy: updatedUser.archivedByUser || null,
-      archivedByUser: undefined,
-    };
-
-    // Log activity
-    await this.activityService.logActivity({
-      userId,
-      action: USER_ACTIVITIES.DELETE,
-      details: {
-        reason: dto.reason,
-        archivedBy: currentUserId,
-      },
     });
 
     return {
+      success: true,
       message: 'User archived successfully',
-      user: response as ArchivedUserResponse,
+      timestamp: new Date(),
+      userId,
+      actionTimestamp: new Date(),
     };
   }
 
@@ -421,5 +393,118 @@ export class UsersService {
       message: 'User restored successfully',
       user: restoredUser,
     };
+  }
+
+  async getAllUsers(filters: ListUsersDto): Promise<ListUsersResponseDto> {
+    const where: Prisma.UserWhereInput = {
+      ...(filters.status && { status: filters.status }),
+      ...(filters.role && { role: filters.role }),
+      ...(filters.department && { department: filters.department }),
+      ...(filters.search && {
+        OR: [
+          { name: { contains: filters.search, mode: 'insensitive' } },
+          { email: { contains: filters.search, mode: 'insensitive' } },
+        ],
+      }),
+    };
+
+    const orderBy: Prisma.UserOrderByWithRelationInput = {
+      [filters.sortBy || 'createdAt']: filters.sortOrder || 'desc',
+    };
+
+    const users = await this.prisma.user.findMany({
+      where,
+      orderBy,
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        status: true,
+        department: true,
+        createdAt: true,
+        updatedAt: true,
+        deletedAt: true,
+      },
+    });
+
+    return {
+      success: true,
+      message: 'Users retrieved successfully',
+      timestamp: new Date(),
+      data: users,
+      total: users.length,
+    };
+  }
+
+  async permanentDeleteUser(
+    userId: string,
+    dto: PermanentDeleteUserDto,
+    adminId: string,
+  ): Promise<UserActionResponseDto> {
+    // Verify user exists and can be deleted
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        status: true,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (user.role === UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException('Cannot delete super admin user');
+    }
+
+    // Use transaction for atomic operation
+    return await this.prisma.$transaction(async (prisma) => {
+      // Log the deletion activity first
+      await this.activityService.logActivity({
+        userId,
+        action: USER_ACTIVITIES.PERMANENT_DELETE,
+        details: {
+          deletedBy: adminId,
+          reason: dto.reason,
+          userName: user.name,
+          userEmail: user.email,
+          timestamp: new Date(),
+        },
+      });
+
+      // Delete related data
+      await Promise.all([
+        // Delete user activities
+        prisma.userActivity.deleteMany({
+          where: { userId },
+        }),
+        // Delete refresh tokens
+        prisma.refreshToken.deleteMany({
+          where: { userId },
+        }),
+        // Delete password reset tokens
+        prisma.passwordReset.deleteMany({
+          where: { userId },
+        }),
+      ]);
+
+      // Finally delete the user
+      await prisma.user.delete({
+        where: { id: userId },
+      });
+
+      return {
+        success: true,
+        message: 'User permanently deleted',
+        timestamp: new Date(),
+        userId,
+        actionTimestamp: new Date(),
+      };
+    });
   }
 }
