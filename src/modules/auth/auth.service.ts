@@ -139,6 +139,10 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    if (user.status === UserStatus.INACTIVE) {
+      throw new UnauthorizedException('Please contact department office');
+    }
+
     if (user.status === UserStatus.ARCHIVED) {
       throw new UnauthorizedException('This account has been deleted');
     }

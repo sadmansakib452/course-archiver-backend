@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, Inject } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  Inject,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { UserActivityService } from './activity.service';
 import { UpdateProfileDto } from '../dto/update-profile.dto';
@@ -53,6 +58,7 @@ export class UserProfileService {
     userId: string,
     dto: UpdateProfileDto,
   ): Promise<UserResponseDto> {
+    // First fetch user with password
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -62,21 +68,49 @@ export class UserProfileService {
         role: true,
         status: true,
         department: true,
+        password: true, // Include password for verification
         createdAt: true,
         updatedAt: true,
       },
     });
 
-    const updateData = {
-      ...(dto.name && { name: dto.name }),
-      ...(dto.newPassword && {
-        password: await bcrypt.hash(
-          dto.newPassword,
-          this.configService.get<number>('env.passwordSaltRounds', 10),
-        ),
-      }),
-    };
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
 
+    // Prepare update data
+    const updateData: any = {};
+
+    // Handle name update
+    if (dto.name) {
+      updateData.name = dto.name;
+    }
+
+    // Handle password update
+    if (dto.newPassword) {
+      // Verify current password is provided
+      if (!dto.currentPassword) {
+        throw new BadRequestException('Current password is required');
+      }
+
+      // Verify current password matches
+      const isPasswordValid = await bcrypt.compare(
+        dto.currentPassword,
+        user.password,
+      );
+
+      if (!isPasswordValid) {
+        throw new BadRequestException('Current password is incorrect');
+      }
+
+      // Hash new password
+      updateData.password = await bcrypt.hash(
+        dto.newPassword,
+        this.configService.get<number>('env.passwordSaltRounds', 10),
+      );
+    }
+
+    // Update user
     const updatedUser = await this.prisma.user.update({
       where: { id: userId },
       data: updateData,
@@ -92,6 +126,7 @@ export class UserProfileService {
       },
     });
 
+    // Clear cache
     await this.cacheManager.del(`user_profile:${userId}`);
 
     return {
