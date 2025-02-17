@@ -27,11 +27,11 @@ async function bootstrap() {
     await healthService.checkConnections();
 
     // Global pipes
-    app.useGlobalPipes(AppValidationPipe);
+    // app.useGlobalPipes(AppValidationPipe);
 
     // Global interceptors and filters
-    app.useGlobalInterceptors(new ApiResponseInterceptor());
-    app.useGlobalFilters(new HttpExceptionFilter());
+    // app.useGlobalInterceptors(new ApiResponseInterceptor());
+    // app.useGlobalFilters(new HttpExceptionFilter());
 
     // Security
     app.use(helmet());

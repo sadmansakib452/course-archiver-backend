@@ -23,10 +23,11 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
-import { AUTH_DESCRIPTIONS } from '../../common/constants/auth-descriptions';
 import { SWAGGER_GROUPS } from '../../common/constants/swagger-groups';
 import { LoginResponse, RegisterResponse } from './dto/login-response.dto';
 import { PreventOAuthGuard } from '../../common/guards/prevent-oauth.guard';
+import { PasswordResetResponse } from './interfaces/password-reset-response.interface';
+import { RequestWithUser } from './interfaces/authenticated-request.interface';
 
 @ApiTags(SWAGGER_GROUPS.AUTH.name)
 @ApiExtraModels(LoginResponse, RegisterResponse)
@@ -134,7 +135,7 @@ export class AuthController {
     status: 200,
     description: 'Successfully logged out',
   })
-  async logout(@Request() req) {
+  async logout(@Request() req: RequestWithUser) {
     return this.authService.logout(req.user.id);
   }
 
@@ -158,7 +159,17 @@ export class AuthController {
     status: 400,
     description: 'Invalid or expired token',
   })
-  async resetPassword(@Body() dto: ResetPasswordDto) {
+  @ApiResponse({
+    status: 422,
+    description: 'Password validation failed',
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Server error',
+  })
+  async resetPassword(
+    @Body() dto: ResetPasswordDto,
+  ): Promise<PasswordResetResponse> {
     return this.authService.resetPassword(dto);
   }
 

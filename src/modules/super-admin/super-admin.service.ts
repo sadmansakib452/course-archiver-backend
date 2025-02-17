@@ -31,7 +31,8 @@ export class SuperAdminService {
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(dto.temporaryPassword, salt);
-
+    console.log("dto ", dto.temporaryPassword);
+    console.log("dto ",dto.email);
     const admin = await this.prisma.user.create({
       data: {
         email: dto.email,

@@ -18,6 +18,8 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { MailService } from '../mail/mail.service';
 import { UserStatus } from '@prisma/client';
 import { v4 as uuid } from 'uuid';
+import { PasswordResetResponse } from './interfaces/password-reset-response.interface';
+import { AuthUser } from './interfaces/auth-user.interface';
 
 @Injectable()
 export class AuthService {
@@ -97,13 +99,13 @@ export class AuthService {
 
     // First revoke all existing refresh tokens for this user
     await this.prisma.refreshToken.updateMany({
-      where: { 
+      where: {
         userId,
-        isRevoked: false 
+        isRevoked: false,
       },
-      data: { 
-        isRevoked: true 
-      }
+      data: {
+        isRevoked: true,
+      },
     });
 
     // Then create the new refresh token
@@ -218,7 +220,7 @@ export class AuthService {
     };
   }
 
-  private async generateTokens(user: any) {
+  private async generateTokens(user: AuthUser) {
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
@@ -242,7 +244,7 @@ export class AuthService {
   private async generateUniqueRefreshToken(): Promise<string> {
     // Generate a unique token using uuid
     const token = `${uuid()}.${Date.now()}`;
-    
+
     // Check if token already exists
     const existingToken = await this.prisma.refreshToken.findUnique({
       where: { token },
@@ -294,14 +296,64 @@ export class AuthService {
       };
     } catch (error) {
       console.error('Password reset request failed:', error);
-      if (error instanceof InternalServerErrorException) {
-        throw error;
-      }
-      throw new InternalServerErrorException('Failed to process reset request');
+
+      return {
+        message: 'Failed to process reset request',
+      };
     }
   }
 
-  async resetPassword(dto: ResetPasswordDto) {
+  private validatePassword(password: string): {
+    isValid: boolean;
+    message?: string;
+  } {
+    if (password.length < 8) {
+      return {
+        isValid: false,
+        message: 'Password must be at least 8 characters',
+      };
+    }
+
+    if (!/[A-Z]/.test(password)) {
+      return {
+        isValid: false,
+        message: 'Password must contain at least one uppercase letter',
+      };
+    }
+
+    if (!/[a-z]/.test(password)) {
+      return {
+        isValid: false,
+        message: 'Password must contain at least one lowercase letter',
+      };
+    }
+
+    if (!/[0-9]/.test(password)) {
+      return {
+        isValid: false,
+        message: 'Password must contain at least one number',
+      };
+    }
+
+    return { isValid: true };
+  }
+
+  async resetPassword(dto: ResetPasswordDto): Promise<PasswordResetResponse> {
+    // Validate password
+    const passwordValidation = this.validatePassword(dto.newPassword);
+    if (!passwordValidation.isValid) {
+      return {
+        success: false,
+        statusCode: 422,
+        message: 'Password validation failed',
+        timestamp: new Date(),
+        details: {
+          password: passwordValidation.message,
+        },
+      };
+    }
+
+    // Check reset token
     const resetRecord = await this.prisma.passwordReset.findFirst({
       where: {
         token: dto.token,
@@ -312,34 +364,53 @@ export class AuthService {
     });
 
     if (!resetRecord) {
-      throw new BadRequestException('Invalid or expired reset token');
+      return {
+        success: false,
+        statusCode: 400,
+        message: 'Invalid or expired reset token',
+        timestamp: new Date(),
+      };
     }
 
-    // Hash new password
-    const salt = await bcrypt.genSalt(
-      this.configService.get<number>('env.passwordSaltRounds'),
-    );
-    const hashedPassword = await bcrypt.hash(dto.newPassword, salt);
+    try {
+      // Hash new password
+      const salt = await bcrypt.genSalt(
+        this.configService.get<number>('env.passwordSaltRounds'),
+      );
+      const hashedPassword = await bcrypt.hash(dto.newPassword, salt);
 
-    // Update password and mark token as used
-    await this.prisma.$transaction([
-      this.prisma.user.update({
-        where: { id: resetRecord.userId },
-        data: { password: hashedPassword },
-      }),
-      this.prisma.passwordReset.update({
-        where: { id: resetRecord.id },
-        data: { isUsed: true },
-      }),
-      // Revoke all refresh tokens
-      this.prisma.refreshToken.updateMany({
-        where: { userId: resetRecord.userId },
-        data: { isRevoked: true },
-      }),
-    ]);
+      // Update password and mark token as used
+      await this.prisma.$transaction([
+        this.prisma.user.update({
+          where: { id: resetRecord.userId },
+          data: { password: hashedPassword },
+        }),
+        this.prisma.passwordReset.update({
+          where: { id: resetRecord.id },
+          data: { isUsed: true },
+        }),
+        this.prisma.refreshToken.updateMany({
+          where: { userId: resetRecord.userId },
+          data: { isRevoked: true },
+        }),
+      ]);
 
-    return {
-      message: 'Password has been reset successfully',
-    };
+      return {
+        success: true,
+        statusCode: 200,
+        message: 'Password has been reset successfully',
+        timestamp: new Date(),
+      };
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error occurred';
+      return {
+        success: false,
+        statusCode: 500,
+        message: 'Failed to reset password',
+        timestamp: new Date(),
+        details: { error: errorMessage },
+      };
+    }
   }
 }
