@@ -131,8 +131,7 @@ model Course {
     // Timestamps
     createdAt    DateTime   @default(now())
     updatedAt    DateTime   @updatedAt
-    department   Department @relation(fields: [departmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-    departmentId String     @db.ObjectId
+    
 
     // Ensure unique course section per semester
     @@unique([code, section, semester, year])
@@ -309,7 +308,7 @@ model Department {
     // Relations
     users   User[]
     faculty FacultyMember[]
-    courses Course[]
+ 
 
     // Timestamps
     createdAt DateTime @default(now())
