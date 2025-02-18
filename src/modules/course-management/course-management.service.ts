@@ -7,7 +7,8 @@ import { Prisma } from '@prisma/client';
 import { ListCourseDto } from './dto/list-course.dto';
 import { CourseListResponse } from './interfaces/course-list.interface';
 import { UpdateCourseDto } from './dto/update-course.dto';
-import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
+import { BulkAssignCoursesDto } from './dto/bulk-assign-courses.dto';
+import { BulkAssignResponse } from './interfaces/bulk-assign.interface';
 
 @Injectable()
 export class CourseManagementService {
@@ -19,22 +20,7 @@ export class CourseManagementService {
     createCourseDto: CreateCourseDto,
   ): Promise<CourseResponse> {
     try {
-      // Check if faculty exists
-      const faculty = await this.prisma.facultyMember.findUnique({
-        where: {
-          id: createCourseDto.facultyId,
-          isActive: true,
-        },
-      });
-
-      if (!faculty) {
-        return {
-          success: false,
-          message: 'Faculty member not found or inactive',
-        };
-      }
-
-      // Check if section already exists for this course in same semester/year
+      // Check for existing section
       const existingSection = await this.prisma.course.findFirst({
         where: {
           code: createCourseDto.code,
@@ -51,9 +37,35 @@ export class CourseManagementService {
         };
       }
 
-      // Create course
+      // If facultyId provided, verify faculty
+      if (createCourseDto.facultyId) {
+        const faculty = await this.prisma.facultyMember.findUnique({
+          where: {
+            id: createCourseDto.facultyId,
+            isActive: true,
+          },
+        });
+
+        if (!faculty) {
+          return {
+            success: false,
+            message: 'Faculty member not found or inactive',
+          };
+        }
+      }
+
+      // Create course with proper type handling
+      const courseData: Prisma.CourseUncheckedCreateInput = {
+        code: createCourseDto.code,
+        name: createCourseDto.name,
+        section: createCourseDto.section,
+        semester: createCourseDto.semester,
+        year: createCourseDto.year,
+        facultyId: createCourseDto.facultyId ?? null,
+      };
+
       const course = await this.prisma.course.create({
-        data: createCourseDto,
+        data: courseData,
         include: {
           faculty: {
             select: {
@@ -126,58 +138,86 @@ export class CourseManagementService {
   }
 
   async listCourses(filters: ListCourseDto): Promise<CourseListResponse> {
-    const page = Number(filters.page) || 1;
-    const limit = Number(filters.limit) || 10;
-    const { search, semester, year } = filters;
+    try {
+      const page = Number(filters.page) || 1;
+      const limit = Number(filters.limit) || 10;
+      const { search, semester, year, facultyId, sortBy, sortOrder } = filters;
 
-    // Build where clause
-    const where: Prisma.CourseWhereInput = {
-      ...(search && {
-        OR: [
-          { code: { contains: search, mode: 'insensitive' } },
-          { name: { contains: search, mode: 'insensitive' } },
+      // Build where clause
+      const where: Prisma.CourseWhereInput = {
+        AND: [
+          // Search condition
+          search
+            ? {
+                OR: [
+                  { code: { contains: search, mode: 'insensitive' } },
+                  { name: { contains: search, mode: 'insensitive' } },
+                ],
+              }
+            : {},
+          // Other filters
+          semester ? { semester } : {},
+          year ? { year: Number(year) } : {},
+          facultyId ? { facultyId } : {},
         ],
-      }),
-      ...(semester && { semester }),
-      ...(year && { year: Number(year) }),
-    };
+      };
 
-    // Get total count
-    const total = await this.prisma.course.count({ where });
+      // Get total count
+      const total = await this.prisma.course.count({ where });
 
-    // Get courses with proper type conversion
-    const courses = await this.prisma.course.findMany({
-      where,
-      include: {
-        faculty: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            shortName: true,
+      // Get courses
+      const courses = await this.prisma.course.findMany({
+        where,
+        include: {
+          faculty: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              shortName: true,
+            },
           },
         },
-      },
-      skip: Math.max(0, (page - 1) * limit),
-      take: Number(limit),
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
-
-    return {
-      success: true,
-      message: 'Courses retrieved successfully',
-      data: {
-        courses,
-        pagination: {
-          total,
-          page,
-          limit,
-          pages: Math.ceil(total / limit),
+        skip: Math.max(0, (page - 1) * limit),
+        take: Number(limit),
+        orderBy: {
+          [sortBy || 'createdAt']: (sortOrder || 'desc') as Prisma.SortOrder,
         },
-      },
-    };
+      });
+
+      return {
+        success: true,
+        message: 'Courses retrieved successfully',
+        data: {
+          courses,
+          pagination: {
+            total,
+            page,
+            limit,
+            pages: Math.ceil(total / limit),
+          },
+        },
+      };
+    } catch (error: unknown) {
+      this.logger.error(
+        `Failed to list courses: ${
+          error instanceof Error ? error.message : 'Unknown error'
+        }`,
+      );
+      return {
+        success: false,
+        message: 'Failed to list courses',
+        data: {
+          courses: [],
+          pagination: {
+            total: 0,
+            page: 1,
+            limit: 10,
+            pages: 0,
+          },
+        },
+      };
+    }
   }
 
   async updateCourse(
@@ -262,6 +302,77 @@ export class CourseManagementService {
       return {
         success: false,
         message: 'Failed to update course',
+      };
+    }
+  }
+
+  async bulkAssignCourses(
+    bulkAssignDto: BulkAssignCoursesDto,
+  ): Promise<BulkAssignResponse> {
+    try {
+      // Check if faculty exists and is active
+      const faculty = await this.prisma.facultyMember.findUnique({
+        where: {
+          id: bulkAssignDto.facultyId,
+          isActive: true,
+        },
+      });
+
+      if (!faculty) {
+        return {
+          success: false,
+          message: 'Faculty member not found or inactive',
+        };
+      }
+
+      // Verify all courses exist
+      const courses = await this.prisma.course.findMany({
+        where: {
+          id: { in: bulkAssignDto.courseIds },
+        },
+      });
+
+      if (courses.length !== bulkAssignDto.courseIds.length) {
+        return {
+          success: false,
+          message: 'One or more courses not found',
+        };
+      }
+
+      // Update all courses in a transaction
+      const updatedCourses = await this.prisma.$transaction(
+        bulkAssignDto.courseIds.map((courseId) =>
+          this.prisma.course.update({
+            where: { id: courseId },
+            data: { facultyId: bulkAssignDto.facultyId },
+            include: {
+              faculty: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  shortName: true,
+                },
+              },
+            },
+          }),
+        ),
+      );
+
+      return {
+        success: true,
+        message: 'Courses assigned successfully',
+        data: updatedCourses,
+      };
+    } catch (error: unknown) {
+      this.logger.error(
+        `Failed to bulk assign courses: ${
+          error instanceof Error ? error.message : 'Unknown error'
+        }`,
+      );
+      return {
+        success: false,
+        message: 'Failed to assign courses',
       };
     }
   }

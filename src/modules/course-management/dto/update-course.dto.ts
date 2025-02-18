@@ -54,4 +54,4 @@ export class UpdateCourseDto {
   @IsOptional()
   @IsString()
   facultyId?: string;
-} 
+}

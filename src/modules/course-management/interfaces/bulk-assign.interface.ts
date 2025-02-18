@@ -1,15 +1,16 @@
 import { Semester } from '@prisma/client';
 
-export interface CourseDetailResponse {
+export interface BulkAssignResponse {
   success: boolean;
   message: string;
-  data?: {
+  data?: Array<{
     id: string;
     code: string;
     name: string;
     section: number;
     semester: Semester;
     year: number;
+    facultyId: string | null;
     faculty: {
       id: string;
       name: string;
@@ -18,5 +19,5 @@ export interface CourseDetailResponse {
     } | null;
     createdAt: Date;
     updatedAt: Date;
-  };
+  }>;
 }

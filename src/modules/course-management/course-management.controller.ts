@@ -23,6 +23,9 @@ import { ListCourseDto } from './dto/list-course.dto';
 import { CourseListResponse } from './interfaces/course-list.interface';
 import { CourseListResponseDto } from './dto/course-list-response.dto';
 import { UpdateCourseDto } from './dto/update-course.dto';
+import { BulkAssignCoursesDto } from './dto/bulk-assign-courses.dto';
+import { BulkAssignResponse } from './interfaces/bulk-assign.interface';
+import { BulkAssignResponseDto } from './dto/bulk-assign-response.dto';
 
 @ApiTags('Course Management')
 @Controller('course-management')
@@ -86,5 +89,18 @@ export class CourseManagementController {
       updateCourseDto,
     );
     return result;
+  }
+
+  @Post('courses/bulk-assign')
+  @ApiOperation({ summary: 'Bulk assign courses to faculty' })
+  @ApiResponse({
+    status: 200,
+    description: 'Courses assigned successfully',
+    type: BulkAssignResponseDto,
+  })
+  async bulkAssignCourses(
+    @Body() bulkAssignDto: BulkAssignCoursesDto,
+  ): Promise<BulkAssignResponse> {
+    return this.courseManagementService.bulkAssignCourses(bulkAssignDto);
   }
 }

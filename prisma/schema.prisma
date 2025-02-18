@@ -116,22 +116,21 @@ model FacultyMember {
 
 // Course model
 model Course {
-    id       String   @id @default(auto()) @map("_id") @db.ObjectId
-    code     String // e.g., CSE101
-    name     String
-    section  Int
-    semester Semester
-    year     Int
+    id        String         @id @default(auto()) @map("_id") @db.ObjectId
+    code      String
+    name      String
+    section   Int
+    semester  Semester
+    year      Int
+    faculty   FacultyMember? @relation(fields: [facultyId], references: [id])
+    facultyId String?        @db.ObjectId
 
     // Relations
-    faculty     FacultyMember @relation(fields: [facultyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-    facultyId   String        @db.ObjectId
     courseFiles CourseFiles[]
 
     // Timestamps
-    createdAt    DateTime   @default(now())
-    updatedAt    DateTime   @updatedAt
-    
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
 
     // Ensure unique course section per semester
     @@unique([code, section, semester, year])
@@ -308,7 +307,6 @@ model Department {
     // Relations
     users   User[]
     faculty FacultyMember[]
- 
 
     // Timestamps
     createdAt DateTime @default(now())

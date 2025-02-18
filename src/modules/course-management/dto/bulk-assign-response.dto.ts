@@ -34,11 +34,11 @@ class CourseData {
   @ApiProperty()
   year: number;
 
-  @ApiProperty({ nullable: true })
-  facultyId: string | null;
+  @ApiProperty()
+  facultyId: string;
 
-  @ApiProperty({ type: FacultyData, nullable: true })
-  faculty: FacultyData | null;
+  @ApiProperty({ type: FacultyData })
+  faculty?: FacultyData;
 
   @ApiProperty()
   createdAt: Date;
@@ -47,13 +47,13 @@ class CourseData {
   updatedAt: Date;
 }
 
-export class CourseResponseDto {
+export class BulkAssignResponseDto {
   @ApiProperty()
   success: boolean;
 
   @ApiProperty()
   message: string;
 
-  @ApiProperty({ type: CourseData, required: false })
-  data?: CourseData;
+  @ApiProperty({ type: [CourseData], required: false })
+  data?: CourseData[];
 }

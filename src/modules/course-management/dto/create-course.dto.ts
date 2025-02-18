@@ -1,5 +1,11 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsInt, IsEnum, IsNotEmpty } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsString,
+  IsInt,
+  IsEnum,
+  IsNotEmpty,
+  IsOptional,
+} from 'class-validator';
 import { Semester } from '@prisma/client';
 
 export class CreateCourseDto {
@@ -44,11 +50,11 @@ export class CreateCourseDto {
   @IsNotEmpty()
   year: number;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     example: '507f1f77bcf86cd799439011',
-    description: 'ID from FacultyMember model (must be an active faculty)',
+    description: 'Faculty ID (optional)',
   })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  facultyId: string;
+  facultyId?: string;
 }

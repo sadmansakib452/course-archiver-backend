@@ -10,7 +10,13 @@ export interface CourseResponse {
     section: number;
     semester: Semester;
     year: number;
-    facultyId: string;
+    facultyId: string | null;
+    faculty: {
+      id: string;
+      name: string;
+      email: string;
+      shortName: string;
+    } | null;
     createdAt: Date;
     updatedAt: Date;
   };

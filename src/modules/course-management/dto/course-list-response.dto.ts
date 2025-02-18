@@ -75,4 +75,4 @@ export class CourseListResponseDto {
 
   @ApiProperty({ type: CourseListData, required: false })
   data?: CourseListData;
-} 
+}
