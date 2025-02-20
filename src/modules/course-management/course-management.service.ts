@@ -9,6 +9,7 @@ import { CourseListResponse } from './interfaces/course-list.interface';
 import { UpdateCourseDto } from './dto/update-course.dto';
 import { BulkAssignCoursesDto } from './dto/bulk-assign-courses.dto';
 import { BulkAssignResponse } from './interfaces/bulk-assign.interface';
+import { UpdateCourseStatusDto } from './dto/update-course-status.dto';
 
 @Injectable()
 export class CourseManagementService {
@@ -141,31 +142,58 @@ export class CourseManagementService {
     try {
       const page = Number(filters.page) || 1;
       const limit = Number(filters.limit) || 10;
-      const { search, semester, year, facultyId, sortBy, sortOrder } = filters;
+      const { search, semester, year, facultyId, sortBy, sortOrder, isActive } =
+        filters;
 
-      // Build where clause
+      // Manual conversion of isActive if it's a string
+      let isActiveBoolean: boolean | undefined = undefined;
+      if (typeof isActive === 'string') {
+        const lower = (isActive as string).toLowerCase();
+        if (lower === 'true' || lower === '1') {
+          isActiveBoolean = true;
+        } else if (lower === 'false' || lower === '0') {
+          isActiveBoolean = false;
+        }
+      } else {
+        // If it's not a string, use it as is (could be boolean or undefined)
+        isActiveBoolean = isActive;
+      }
+
       const where: Prisma.CourseWhereInput = {
-        AND: [
-          // Search condition
-          search
-            ? {
-                OR: [
-                  { code: { contains: search, mode: 'insensitive' } },
-                  { name: { contains: search, mode: 'insensitive' } },
-                ],
-              }
-            : {},
-          // Other filters
-          semester ? { semester } : {},
-          year ? { year: Number(year) } : {},
-          facultyId ? { facultyId } : {},
-        ],
+        ...(search && {
+          OR: [
+            {
+              code: {
+                contains: search,
+                mode: 'insensitive' as Prisma.QueryMode,
+              },
+            },
+            {
+              name: {
+                contains: search,
+                mode: 'insensitive' as Prisma.QueryMode,
+              },
+            },
+          ],
+        }),
+        ...(semester && { semester }),
+        ...(year && { year: Number(year) }),
+        ...(facultyId && { facultyId }),
+        ...(isActive !== undefined && { isActive: isActiveBoolean }),
       };
 
-      // Get total count
+      console.log('Final where clause:', where);
       const total = await this.prisma.course.count({ where });
+      console.log('Total count:', total);
 
-      // Get courses
+      const activeCourses = await this.prisma.course.findMany({
+        where: {
+          isActive: true,
+        },
+      });
+
+      console.log('Active courses:', activeCourses);
+
       const courses = await this.prisma.course.findMany({
         where,
         include: {
@@ -373,6 +401,57 @@ export class CourseManagementService {
       return {
         success: false,
         message: 'Failed to assign courses',
+      };
+    }
+  }
+
+  async updateCourseStatus(
+    id: string,
+    updateStatusDto: UpdateCourseStatusDto,
+  ): Promise<CourseResponse> {
+    try {
+      const course = await this.prisma.course.findUnique({
+        where: { id },
+      });
+
+      if (!course) {
+        return {
+          success: false,
+          message: 'Course not found',
+        };
+      }
+
+      const updatedCourse = await this.prisma.course.update({
+        where: { id },
+        data: {
+          isActive: updateStatusDto.isActive,
+        },
+        include: {
+          faculty: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              shortName: true,
+            },
+          },
+        },
+      });
+
+      return {
+        success: true,
+        message: 'Course status updated successfully',
+        data: updatedCourse,
+      };
+    } catch (error: unknown) {
+      this.logger.error(
+        `Failed to update course status: ${
+          error instanceof Error ? error.message : 'Unknown error'
+        }`,
+      );
+      return {
+        success: false,
+        message: 'Failed to update course status',
       };
     }
   }

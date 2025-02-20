@@ -45,6 +45,9 @@ class CourseData {
 
   @ApiProperty()
   updatedAt: Date;
+
+  @ApiProperty()
+  isActive: boolean;
 }
 
 export class CourseResponseDto {

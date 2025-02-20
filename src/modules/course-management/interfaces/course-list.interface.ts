@@ -20,6 +20,7 @@ export interface CourseListResponse {
       } | null;
       createdAt: Date;
       updatedAt: Date;
+      isActive: boolean;
     }>;
     pagination: {
       total: number;

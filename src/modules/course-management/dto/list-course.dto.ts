@@ -1,5 +1,12 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsInt, IsEnum, IsIn } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsInt,
+  IsEnum,
+  IsIn,
+  IsBoolean,
+} from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { Semester } from '@prisma/client';
 
@@ -83,4 +90,20 @@ export class ListCourseDto {
   @Type(() => Number)
   @IsInt()
   limit?: number = 10;
+
+  @ApiPropertyOptional({
+    description: 'Filter by active status',
+    type: Boolean,
+  })
+  @IsOptional()
+  @Transform(
+    ({ value }) => {
+      if (value === 'true' || value === '1') return true;
+      if (value === 'false' || value === '0') return false;
+      return undefined;
+    },
+    { toClassOnly: true },
+  )
+  @IsBoolean()
+  isActive?: boolean;
 }

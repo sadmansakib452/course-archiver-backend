@@ -18,5 +18,6 @@ export interface CourseDetailResponse {
     } | null;
     createdAt: Date;
     updatedAt: Date;
+    isActive: boolean;
   };
 }

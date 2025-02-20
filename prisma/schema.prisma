@@ -124,6 +124,7 @@ model Course {
     year      Int
     faculty   FacultyMember? @relation(fields: [facultyId], references: [id])
     facultyId String?        @db.ObjectId
+    isActive  Boolean        @default(true)
 
     // Relations
     courseFiles CourseFiles[]
@@ -135,6 +136,7 @@ model Course {
     // Ensure unique course section per semester
     @@unique([code, section, semester, year])
     @@index([facultyId])
+    @@index([isActive])
 }
 
 // Course Files model

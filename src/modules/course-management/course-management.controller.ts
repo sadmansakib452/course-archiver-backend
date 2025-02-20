@@ -26,6 +26,7 @@ import { UpdateCourseDto } from './dto/update-course.dto';
 import { BulkAssignCoursesDto } from './dto/bulk-assign-courses.dto';
 import { BulkAssignResponse } from './interfaces/bulk-assign.interface';
 import { BulkAssignResponseDto } from './dto/bulk-assign-response.dto';
+import { UpdateCourseStatusDto } from './dto/update-course-status.dto';
 
 @ApiTags('Course Management')
 @Controller('course-management')
@@ -102,5 +103,19 @@ export class CourseManagementController {
     @Body() bulkAssignDto: BulkAssignCoursesDto,
   ): Promise<BulkAssignResponse> {
     return this.courseManagementService.bulkAssignCourses(bulkAssignDto);
+  }
+
+  @Patch('courses/:id/status')
+  @ApiOperation({ summary: 'Update course status (activate/deactivate)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Course status updated successfully',
+    type: CourseResponseDto,
+  })
+  async updateCourseStatus(
+    @Param('id') id: string,
+    @Body() updateStatusDto: UpdateCourseStatusDto,
+  ): Promise<CourseResponse> {
+    return this.courseManagementService.updateCourseStatus(id, updateStatusDto);
   }
 }

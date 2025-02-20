@@ -42,6 +42,9 @@ class CourseData {
 
   @ApiProperty()
   updatedAt: Date;
+
+  @ApiProperty()
+  isActive: boolean;
 }
 
 class PaginationData {
