@@ -455,4 +455,40 @@ export class CourseManagementService {
       };
     }
   }
+
+  async permanentDeleteCourse(id: string): Promise<CourseResponse> {
+    try {
+      // Check if course exists
+      const course = await this.prisma.course.findUnique({
+        where: { id },
+      });
+
+      if (!course) {
+        return {
+          success: false,
+          message: 'Course not found',
+        };
+      }
+
+      // Perform permanent deletion
+      await this.prisma.course.delete({
+        where: { id },
+      });
+
+      return {
+        success: true,
+        message: 'Course permanently deleted',
+      };
+    } catch (error: unknown) {
+      this.logger.error(
+        `Failed to delete course: ${
+          error instanceof Error ? error.message : 'Unknown error'
+        }`,
+      );
+      return {
+        success: false,
+        message: 'Failed to delete course',
+      };
+    }
+  }
 }

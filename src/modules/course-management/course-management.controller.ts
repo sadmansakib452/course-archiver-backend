@@ -7,6 +7,7 @@ import {
   Param,
   Query,
   Patch,
+  Delete,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -117,5 +118,19 @@ export class CourseManagementController {
     @Body() updateStatusDto: UpdateCourseStatusDto,
   ): Promise<CourseResponse> {
     return this.courseManagementService.updateCourseStatus(id, updateStatusDto);
+  }
+
+  @Delete('courses/:id/permanent')
+  @ApiOperation({ summary: 'Permanently delete a course' })
+  @ApiResponse({
+    status: 200,
+    description: 'Course permanently deleted',
+    type: CourseResponseDto,
+  })
+  async permanentDeleteCourse(
+    @Param('id') id: string,
+  ): Promise<CourseResponse> {
+    const result = await this.courseManagementService.permanentDeleteCourse(id);
+    return result;
   }
 }
