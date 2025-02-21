@@ -207,6 +207,17 @@ export class CourseFilesService {
     return template;
   }
 
+  // Add helper method for file type checking
+  private getFileExtension(mimetype: string): string {
+    const mimeMap = {
+      'application/pdf': 'pdf',
+      'application/msword': 'doc',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+        'docx',
+    };
+    return mimeMap[mimetype] || '';
+  }
+
   async uploadDynamicFile(
     courseId: string,
     file: Express.Multer.File,
@@ -214,6 +225,10 @@ export class CourseFilesService {
     userId: string,
   ): Promise<CourseFileResponse> {
     try {
+      console.log('File mimetype:', file.mimetype);
+      console.log('Template ID:', dto.templateId);
+      console.log('File size:', file.size);
+
       const { buffer, originalname } = this.getFileData(file);
 
       const course = await this.prisma.course.findUnique({
@@ -296,19 +311,11 @@ export class CourseFilesService {
             throw new NotFoundException('Template not found');
           }
 
-          // Type guard for template
-          if (!this.isValidTemplate(template)) {
-            throw new BadRequestException('Invalid template data');
-          }
-
-          if (!template.status) {
-            throw new BadRequestException('Template is inactive');
-          }
-
-          // Validate file type
-          if (!template.fileTypes.includes(file.mimetype)) {
+          // Validate file type using extension
+          const fileExt = this.getFileExtension(file.mimetype);
+          if (!template.fileTypes.includes(fileExt)) {
             throw new BadRequestException(
-              'File type not allowed for this template',
+              `File type not allowed. Allowed types: ${template.fileTypes.join(', ')}`,
             );
           }
 

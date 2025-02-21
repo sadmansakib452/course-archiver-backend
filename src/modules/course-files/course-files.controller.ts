@@ -106,16 +106,19 @@ export class CourseFilesController {
     FileInterceptor('file', {
       storage: memoryStorage(),
       fileFilter: (req, file, cb) => {
-        if (!file.originalname.match(/\.(pdf|doc|docx)$/)) {
+        const allowedMimes = [
+          'application/pdf',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        ];
+        
+        if (!allowedMimes.includes(file.mimetype)) {
           return cb(
             new BadRequestException('Only PDF and Word files are allowed'),
             false,
           );
         }
         cb(null, true);
-      },
-      limits: {
-        fileSize: 10 * 1024 * 1024, // 10MB
       },
     }),
   )
