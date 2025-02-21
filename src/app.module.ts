@@ -18,6 +18,7 @@ import { CacheModule, CacheModuleOptions } from '@nestjs/cache-manager';
 import { redisStore } from 'cache-manager-redis-store';
 import type { RedisClientOptions } from 'redis';
 import { CourseManagementModule } from './modules/course-management/course-management.module';
+import { CourseFilesModule } from './modules/course-files/course-files.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { CourseManagementModule } from './modules/course-management/course-manag
       inject: [ConfigService],
     }),
     CourseManagementModule,
+    CourseFilesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

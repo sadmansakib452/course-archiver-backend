@@ -38,10 +38,12 @@ enum UserStatus {
 
 // Types
 type FileData {
-    url       String
-    version   Int
-    updatedAt DateTime
-    hash      String?
+    url        String
+    version    Int
+    updatedAt  DateTime
+    hash       String?
+    approvedAt DateTime?
+    comments   String?
 }
 
 // User model: Authentication and authorization
@@ -144,24 +146,40 @@ model CourseFiles {
     id       String     @id @default(auto()) @map("_id") @db.ObjectId
     courseId String     @db.ObjectId
     userId   String     @db.ObjectId
-    fileType String // e.g., "course_outline", "mid_exam"
+    semester Semester?
+    year     Int?
     status   FileStatus @default(PENDING)
-    fileData FileData
     comments String?
-    semester Semester
-    year     Int
 
-    // Relations
-    user          User           @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-    course        Course         @relation(fields: [courseId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-    notifications Notification[]
+    // Optional Fixed Files
+    attendanceSheet FileData?
+    finalGrades     FileData?
+    summaryObe      FileData?
+    insFeedback     FileData?
+    courseOutline   FileData?
+    assignment      FileData?
+    labExperiment   FileData?
 
-    // Timestamps
-    createdAt DateTime   @default(now())
-    updatedAt DateTime   @updatedAt
+    // Optional Exam Files
     MidExam   MidExam[]
     QuizExam  QuizExam[]
     FinalExam FinalExam?
+
+    // Optional Dynamic Files
+    customFiles Json?
+    miscFiles   Json?
+
+    // Relations
+    user          User           @relation(fields: [userId], references: [id])
+    course        Course         @relation(fields: [courseId], references: [id])
+    notifications Notification[]
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@unique([courseId, userId])
+    @@index([courseId])
+    @@index([userId])
 }
 
 // Exam models
