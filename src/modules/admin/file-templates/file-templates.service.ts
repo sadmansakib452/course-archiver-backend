@@ -40,47 +40,43 @@ export class FileTemplatesService {
     }
   }
 
-  async listTemplates({ 
-    department, 
+  async listTemplates({
     status,
     page = 1,
     limit = 10,
   }: {
-    department?: string;
     status?: boolean;
     page?: number;
     limit?: number;
   }) {
-    const skip = (page - 1) * limit;
+    const skip = (Number(page) - 1) * Number(limit);
 
     const [templates, total] = await Promise.all([
       this.prisma.fileTemplate.findMany({
         where: {
-          ...(department && { department }),
-          ...(status !== undefined && { status }),
+          ...(status !== undefined && { status: Boolean(status) }),
         },
         orderBy: {
           createdAt: 'desc',
         },
-        skip,
-        take: limit,
+        skip: Number(skip),
+        take: Number(limit),
       }),
       this.prisma.fileTemplate.count({
         where: {
-          ...(department && { department }),
-          ...(status !== undefined && { status }),
+          ...(status !== undefined && { status: Boolean(status) }),
         },
       }),
     ]);
 
     return {
       success: true,
-      data: templates,
+      data: templates.map((template) => TemplateDto.fromEntity(template)),
       meta: {
         total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
+        page: Number(page),
+        limit: Number(limit),
+        totalPages: Math.ceil(total / Number(limit)),
       },
     };
   }
@@ -190,31 +186,9 @@ export class FileTemplatesService {
     };
   }
 
-  async getDepartmentStats(department: string) {
-    const templates = await this.prisma.fileTemplate.findMany({
-      where: { department },
-      include: {
-        _count: {
-          select: { usages: true },
-        },
-      },
-    });
-
-    return {
-      department,
-      totalTemplates: templates.length,
-      templates: templates.map((t) => ({
-        id: t.id,
-        name: t.name,
-        usageCount: t._count.usages,
-      })),
-    };
-  }
-
   async searchTemplates(searchDto: SearchTemplateDto) {
     const {
       search,
-      department,
       status,
       sortBy = 'createdAt',
       sortOrder = 'desc',
@@ -235,12 +209,7 @@ export class FileTemplatesService {
       });
     }
 
-    // Add department filter if provided
-    if (department) {
-      where.AND.push({ department });
-    }
-
-    // Add status filter if provided - convert string to boolean
+    // Add status filter if provided
     if (status !== undefined) {
       where.AND.push({ status: status === 'true' });
     }
@@ -266,7 +235,7 @@ export class FileTemplatesService {
       success: true,
       data: templates.map((template) => ({
         ...TemplateDto.fromEntity(template),
-        usageCount: template._count.usages,
+        usageCount: template._count?.usages || 0,
       })),
     };
   }

@@ -2,7 +2,7 @@ import { FileData } from './file-data.interface';
 import { FileStatus } from '@prisma/client';
 import { FileTemplate as PrismaFileTemplate } from '@prisma/client';
 
-// Re-export the Prisma type
+// Only keep the Prisma type
 export type FileTemplate = PrismaFileTemplate;
 
 export interface CustomFileUpload {

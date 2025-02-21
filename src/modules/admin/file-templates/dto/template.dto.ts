@@ -21,9 +21,6 @@ export class TemplateDto {
   maxSize: number;
 
   @ApiProperty()
-  department: string;
-
-  @ApiProperty()
   status: boolean;
 
   @ApiProperty()
@@ -35,10 +32,32 @@ export class TemplateDto {
   @ApiProperty()
   updatedAt: Date;
 
-  // Add static mapper method
+  // Remove department from mapper
   static fromEntity(entity: FileTemplate): TemplateDto {
+    const {
+      id,
+      name,
+      description,
+      isRequired,
+      fileTypes,
+      maxSize,
+      status,
+      createdBy,
+      createdAt,
+      updatedAt,
+    } = entity;
+
     return {
-      ...entity,
+      id,
+      name,
+      description,
+      isRequired,
+      fileTypes,
+      maxSize,
+      status,
+      createdBy,
+      createdAt,
+      updatedAt,
     };
   }
 }

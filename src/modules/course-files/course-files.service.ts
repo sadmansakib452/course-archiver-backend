@@ -59,9 +59,9 @@ interface ValidTemplate {
   isRequired: boolean;
   fileTypes: string[];
   maxSize: number;
-  department: string;
   status: boolean;
   createdBy: string;
+  userId: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -391,18 +391,17 @@ export class CourseFilesService {
       typeof t.isRequired === 'boolean' &&
       Array.isArray(t.fileTypes) &&
       typeof t.maxSize === 'number' &&
-      typeof t.department === 'string' &&
       typeof t.status === 'boolean' &&
       typeof t.createdBy === 'string' &&
+      typeof t.userId === 'string' &&
       t.createdAt instanceof Date &&
       t.updatedAt instanceof Date
     );
   }
 
-  async getAvailableTemplates(department: string): Promise<FileTemplate[]> {
+  async getAvailableTemplates(): Promise<FileTemplate[]> {
     return this.prisma.fileTemplate.findMany({
       where: {
-        department,
         status: true, // Only active templates
       },
       orderBy: {

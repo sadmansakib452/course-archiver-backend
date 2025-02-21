@@ -48,12 +48,10 @@ export class FileTemplatesController {
   @ApiResponse({ type: TemplateListResponseDto })
   async listTemplates(
     @Query() pagination: PaginationDto,
-    @Query('department') department?: string,
-    @Query('status') status?: boolean,
+    @Query('status') status?: string,
   ): Promise<TemplateListResponseDto> {
-    return this.fileTemplatesService.listTemplates({ 
-      department, 
-      status,
+    return this.fileTemplatesService.listTemplates({
+      status: status === 'true',
       page: pagination.page,
       limit: pagination.limit,
     });
@@ -63,12 +61,6 @@ export class FileTemplatesController {
   @ApiOperation({ summary: 'Search templates' })
   async searchTemplates(@Query() searchDto: SearchTemplateDto) {
     return this.fileTemplatesService.searchTemplates(searchDto);
-  }
-
-  @Get('department/:department/stats')
-  @ApiOperation({ summary: 'Get department template statistics' })
-  async getDepartmentStats(@Param('department') department: string) {
-    return this.fileTemplatesService.getDepartmentStats(department);
   }
 
   @Get(':id')

@@ -37,9 +37,4 @@ export class CreateTemplateDto {
   @Min(0)
   @IsOptional()
   maxSize?: number;
-
-  @ApiProperty({ description: 'Department code' })
-  @IsString()
-  @IsNotEmpty()
-  department: string;
 }

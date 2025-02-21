@@ -355,20 +355,16 @@ model FileTemplate {
     id          String          @id @default(auto()) @map("_id") @db.ObjectId
     name        String
     description String?
-    isRequired  Boolean         @default(false)
-    fileTypes   String[] // ["pdf", "doc", "docx"]
-    maxSize     Int             @default(10485760) // Default 10MB
-    department  String
+    isRequired  Boolean
+    fileTypes   String[]
+    maxSize     Int
     status      Boolean         @default(true)
-    createdBy   String          @db.ObjectId
+    createdBy   String
     createdAt   DateTime        @default(now())
     updatedAt   DateTime        @updatedAt
     usages      TemplateUsage[]
-
-    user User @relation(fields: [createdBy], references: [id])
-
-    @@index([department])
-    @@index([status])
+    User        User?           @relation(fields: [userId], references: [id])
+    userId      String?         @db.ObjectId
 }
 
 // Add template usage tracking

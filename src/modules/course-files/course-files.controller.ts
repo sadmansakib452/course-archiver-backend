@@ -109,9 +109,9 @@ export class CourseFilesController {
         const allowedMimes = [
           'application/pdf',
           'application/msword',
-          'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         ];
-        
+
         if (!allowedMimes.includes(file.mimetype)) {
           return cb(
             new BadRequestException('Only PDF and Word files are allowed'),
@@ -140,11 +140,9 @@ export class CourseFilesController {
   }
 
   @Get('templates')
-  @ApiOperation({ summary: 'Get available templates for the department' })
-  async getTemplates(
-    @Query('department') department: string,
-  ): Promise<FileTemplate[]> {
-    return this.courseFilesService.getAvailableTemplates(department);
+  @ApiOperation({ summary: 'Get available templates' })
+  async getTemplates(): Promise<FileTemplate[]> {
+    return this.courseFilesService.getAvailableTemplates();
   }
 
   @Get('templates/:id/requirements')
@@ -162,12 +160,6 @@ export class CourseFilesController {
       isRequired: template.isRequired,
       description: template.description || undefined,
     };
-  }
-
-  @Get('templates/department/:department')
-  @ApiOperation({ summary: 'Get templates by department' })
-  async getTemplatesByDepartment(@Param('department') department: string) {
-    return this.courseFilesService.getAvailableTemplates(department);
   }
 
   @Get('templates/:id/validate')
