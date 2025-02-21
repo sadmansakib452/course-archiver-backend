@@ -7,15 +7,16 @@ import {
   UploadedFile,
   UseInterceptors,
   BadRequestException,
-  ParseFilePipe,
-  FileTypeValidator,
-  MaxFileSizeValidator,
   Req,
   Get,
   Query,
   NotFoundException,
+  UploadedFiles,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import {
+  FileInterceptor,
+  FileFieldsInterceptor,
+} from '@nestjs/platform-express';
 import {
   ApiTags,
   ApiConsumes,
@@ -33,6 +34,8 @@ import { Request } from 'express';
 import { User } from '@prisma/client';
 import { UploadDynamicFileDto } from './dto/upload-dynamic-file.dto';
 import { FileTemplate } from './interfaces/file-template.interface';
+import { MultipleExamResponse } from './dto/exam-response.dto';
+import { ExamSetUploadDto } from './dto/exam-set-upload.dto';
 
 @ApiTags('Course Files')
 @Controller('course-files')
@@ -173,6 +176,74 @@ export class CourseFilesController {
       templateId,
       fileSize,
       fileType,
+    );
+  }
+
+  /**
+   * Upload multiple exam files
+   *
+   * This endpoint allows uploading multiple files for different exam types (MID, QUIZ, FINAL).
+   * Each exam can have up to 4 components: question, highest, average, and marginal papers.
+   * Supports partial uploads and updates to existing exam files.
+   *
+   * @param courseId - The ID of the course
+   * @param files - Object containing uploaded files categorized by type
+   * @param dto - DTO containing exam metadata
+   * @param req - Request object containing user information
+   * @returns MultipleExamResponse containing upload status and results
+   *
+   * @example
+   * POST /course-files/123/exams
+   * Content-Type: multipart/form-data
+   *
+   * {
+   *   "exams": [
+   *     {
+   *       "examType": "MID",
+   *       "examNumber": 1,
+   *       "files": {
+   *         "question": [File],
+   *         "highest": [File],
+   *         "average": [File],
+   *         "marginal": [File]
+   *       }
+   *     }
+   *   ]
+   * }
+   */
+  @Post(':courseId/exams')
+  @ApiOperation({
+    summary: 'Upload exam files',
+    description: 'Upload single or multiple exam files with their components',
+  })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(
+    FileFieldsInterceptor([
+      { name: 'question_1', maxCount: 1 },
+      { name: 'highest_1', maxCount: 1 },
+      { name: 'average_1', maxCount: 1 },
+      { name: 'marginal_1', maxCount: 1 },
+      { name: 'question_2', maxCount: 1 },
+      { name: 'highest_2', maxCount: 1 },
+      { name: 'average_2', maxCount: 1 },
+      { name: 'marginal_2', maxCount: 1 },
+    ]),
+  )
+  async uploadExamFiles(
+    @Param('courseId') courseId: string,
+    @UploadedFiles() files: { [key: string]: Express.Multer.File[] },
+    @Body() dto: ExamSetUploadDto,
+    @Req() req: Request & { user: User },
+  ): Promise<MultipleExamResponse> {
+    if (!files || Object.keys(files).length === 0) {
+      throw new BadRequestException('At least one file is required');
+    }
+
+    return await this.courseFilesService.uploadExamFiles(
+      courseId,
+      files,
+      dto,
+      req.user.id,
     );
   }
 }

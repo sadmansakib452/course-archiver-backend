@@ -14,6 +14,10 @@ import { UploadDynamicFileDto } from './dto/upload-dynamic-file.dto';
 import { FileTemplatesService } from '../admin/file-templates/file-templates.service';
 import { FileTemplate } from '@prisma/client';
 import { TemplateUsageService } from './services/template-usage.service';
+import { MultipleExamResponse } from './dto/exam-response.dto';
+import { ExamType, ExamFileType } from './dto/exam-file.dto';
+import { ExamSetUploadDto } from './dto/exam-set-upload.dto';
+import { ExamUploadResult } from './interfaces/exam-upload.interface';
 
 // Add interface for file data
 interface FileDataUpload {
@@ -64,6 +68,14 @@ interface ValidTemplate {
   userId: string | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+// Add at the top with other interfaces
+interface ExamRecord {
+  id: string;
+  examNumber?: number;
+  quizNumber?: number;
+  isCompleted: boolean;
 }
 
 @Injectable()
@@ -209,13 +221,13 @@ export class CourseFilesService {
 
   // Add helper method for file type checking
   private getFileExtension(mimetype: string): string {
-    const mimeMap = {
+    const mimeMap: Record<string, string> = {
       'application/pdf': 'pdf',
       'application/msword': 'doc',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
         'docx',
     };
-    return mimeMap[mimetype] || '';
+    return mimeMap[mimetype] ?? '';
   }
 
   async uploadDynamicFile(
@@ -435,5 +447,162 @@ export class CourseFilesService {
         isRequired: template.isRequired,
       },
     };
+  }
+
+  async uploadExamFiles(
+    courseId: string,
+    files: { [key: string]: Express.Multer.File[] },
+    dto: ExamSetUploadDto,
+    userId: string,
+  ): Promise<MultipleExamResponse> {
+    try {
+      // Validate course exists
+      const course = await this.prisma.course.findUnique({
+        where: { id: courseId },
+      });
+
+      if (!course) {
+        throw new NotFoundException('Course not found');
+      }
+
+      // Get or create CourseFiles record
+      const courseFiles = await this.prisma.courseFiles.upsert({
+        where: {
+          courseId_userId: {
+            courseId,
+            userId,
+          },
+        },
+        create: {
+          courseId,
+          userId,
+          status: FileStatus.PENDING,
+        },
+        update: {},
+      });
+
+      const examResults: ExamUploadResult[] = [];
+
+      // Process each set
+      for (const setNumber of [1, 2]) {
+        const setFiles = this.getSetFiles(files, setNumber);
+        if (Object.keys(setFiles).length > 0) {
+          const result = await this.processExamSet(
+            courseFiles.id,
+            setFiles,
+            dto.examType,
+            setNumber,
+            courseId,
+          );
+          examResults.push(result);
+        }
+      }
+
+      return {
+        success: true,
+        message: 'Exam files uploaded successfully',
+        data: {
+          courseId,
+          exams: examResults,
+        },
+      };
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        throw new BadRequestException(
+          `Failed to upload exam files: ${error.message}`,
+        );
+      }
+      throw new BadRequestException('Failed to upload exam files');
+    }
+  }
+
+  private getSetFiles(
+    files: { [key: string]: Express.Multer.File[] },
+    setNumber: number,
+  ): { [key: string]: Express.Multer.File } {
+    const setFiles: { [key: string]: Express.Multer.File } = {};
+    const fileTypes = Object.values(ExamFileType);
+
+    fileTypes.forEach((type) => {
+      const key = `${type}_${setNumber}`;
+      if (files[key]?.[0]) {
+        setFiles[type] = files[key][0];
+      }
+    });
+
+    return setFiles;
+  }
+
+  private async processExamSet(
+    courseFilesId: string,
+    files: { [key: string]: Express.Multer.File },
+    examType: ExamType,
+    setNumber: number,
+    courseId: string,
+  ): Promise<ExamUploadResult> {
+    const examFiles: Record<string, FileDataUpload> = {};
+
+    // Process each file
+    for (const [fileType, file] of Object.entries(files)) {
+      const { buffer, originalname } = this.getFileData(file);
+      const hash = crypto.createHash('sha256').update(buffer).digest('hex');
+      const filePath = `${courseId}/exams/${examType}/${setNumber}/${fileType}/${originalname}`;
+
+      const url = await this.minioService.uploadFile(
+        { ...file, buffer, originalname },
+        filePath,
+      );
+
+      examFiles[fileType] = {
+        url,
+        version: 1,
+        updatedAt: new Date(),
+        hash,
+        approvedAt: null,
+      };
+    }
+
+    // Create or update exam record
+    const examData = {
+      courseFilesId,
+      ...examFiles,
+      isCompleted: this.isExamComplete(examFiles),
+    };
+
+    const exam = await this.prisma.midExam.upsert({
+      where: {
+        courseFilesId_examNumber: {
+          courseFilesId,
+          examNumber: setNumber,
+        },
+      },
+      create: {
+        ...examData,
+        examNumber: setNumber,
+      },
+      update: examData,
+    });
+
+    return {
+      examId: exam.id,
+      examNumber: setNumber,
+      uploadedFiles: Object.keys(examFiles),
+      pendingFiles: Object.values(ExamFileType).filter(
+        (type) => !Object.keys(examFiles).includes(type),
+      ),
+      isComplete: this.isExamComplete(examFiles),
+    };
+  }
+
+  /**
+   * Check if all required exam components are present
+   *
+   * @param files - Object containing exam file components
+   * @returns boolean indicating if all required components are present
+   */
+  private isExamComplete(
+    files: Partial<Record<ExamFileType, FileDataUpload>>,
+  ): boolean {
+    return Object.values(ExamFileType).every((type) => files[type]);
   }
 }
