@@ -11,6 +11,9 @@ import { FileStatus } from '@prisma/client';
 import * as crypto from 'crypto';
 import { ConfigService } from '@nestjs/config';
 import { UploadDynamicFileDto } from './dto/upload-dynamic-file.dto';
+import { FileTemplatesService } from '../admin/file-templates/file-templates.service';
+import { FileTemplate } from '@prisma/client';
+import { TemplateUsageService } from './services/template-usage.service';
 
 // Add interface for file data
 interface FileDataUpload {
@@ -48,13 +51,47 @@ type ExistingFileType = {
   userId: string;
 };
 
+// 1. Add type guard for template
+interface ValidTemplate {
+  id: string;
+  name: string;
+  description: string | null;
+  isRequired: boolean;
+  fileTypes: string[];
+  maxSize: number;
+  department: string;
+  status: boolean;
+  createdBy: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 @Injectable()
 export class CourseFilesService {
   constructor(
     private prisma: PrismaService,
     private minioService: MinioService,
     private configService: ConfigService,
+    private fileTemplatesService: FileTemplatesService,
+    private templateUsageService: TemplateUsageService,
   ) {}
+
+  // 1. First, create a type-safe file accessor
+  private getFileData(file: Express.Multer.File): {
+    buffer: Buffer;
+    originalname: string;
+  } {
+    if (!this.isValidFile(file)) {
+      throw new BadRequestException('Invalid file data');
+    }
+
+    // Type assertion after validation
+    const validatedFile = file as { buffer: Buffer; originalname: string };
+    return {
+      buffer: validatedFile.buffer,
+      originalname: validatedFile.originalname,
+    };
+  }
 
   async uploadFixedFile(
     courseId: string,
@@ -63,10 +100,7 @@ export class CourseFilesService {
     userId: string,
   ): Promise<CourseFileResponse> {
     try {
-      // Type guard for file
-      if (!this.isValidFile(file)) {
-        throw new BadRequestException('Invalid file data');
-      }
+      const { buffer, originalname } = this.getFileData(file);
 
       // Validate course exists
       const course = await this.prisma.course.findUnique({
@@ -78,22 +112,14 @@ export class CourseFilesService {
       }
 
       // Generate file hash
-      const hash = crypto
-        .createHash('sha256')
-        .update(file.buffer)
-        .digest('hex');
+      const hash = crypto.createHash('sha256').update(buffer).digest('hex');
 
       // Create file path
-      const filePath = `${courseId}/${dto.fileType}/${file.originalname}`;
-      const bucketName =
-        this.configService.get<string>('MINIO_BUCKET') || 'course-files';
+      const filePath = `${courseId}/${dto.fileType}/${originalname}`;
 
       // Upload to MinIO and get URL
-      const url = await this.minioService.uploadFile(file, filePath);
-
-      // Generate presigned URL for immediate access
-      const accessUrl = await this.minioService.getPresignedUrl(
-        bucketName,
+      const accessUrl = await this.minioService.uploadFile(
+        { ...file, buffer, originalname },
         filePath,
       );
 
@@ -168,6 +194,19 @@ export class CourseFilesService {
     }
   }
 
+  // 2. Use type guard in methods
+  async getTemplate(templateId: string): Promise<ValidTemplate | undefined> {
+    const template = await this.prisma.fileTemplate.findUnique({
+      where: { id: templateId },
+    });
+
+    if (!template || !this.isValidTemplate(template)) {
+      return undefined;
+    }
+
+    return template;
+  }
+
   async uploadDynamicFile(
     courseId: string,
     file: Express.Multer.File,
@@ -175,9 +214,7 @@ export class CourseFilesService {
     userId: string,
   ): Promise<CourseFileResponse> {
     try {
-      if (!this.isValidFile(file)) {
-        throw new BadRequestException('Invalid file data');
-      }
+      const { buffer, originalname } = this.getFileData(file);
 
       const course = await this.prisma.course.findUnique({
         where: { id: courseId },
@@ -187,18 +224,12 @@ export class CourseFilesService {
         throw new NotFoundException('Course not found');
       }
 
-      const hash = crypto
-        .createHash('sha256')
-        .update(file.buffer)
-        .digest('hex');
+      const hash = crypto.createHash('sha256').update(buffer).digest('hex');
 
-      const filePath = `${courseId}/${dto.type}/${dto.name}/${file.originalname}`;
-      const bucketName =
-        this.configService.get<string>('MINIO_BUCKET') || 'course-files';
+      const filePath = `${courseId}/${dto.type}/${dto.name}/${originalname}`;
 
-      const url = await this.minioService.uploadFile(file, filePath);
-      const accessUrl = await this.minioService.getPresignedUrl(
-        bucketName,
+      const accessUrl = await this.minioService.uploadFile(
+        { ...file, buffer, originalname },
         filePath,
       );
 
@@ -219,8 +250,8 @@ export class CourseFilesService {
       // Prepare dynamic files update
       const dynamicFileField =
         dto.type === 'custom' ? 'customFiles' : 'miscFiles';
-      let existingFiles = (existingFile?.[dynamicFileField] ||
-        []) as DynamicFileData[];
+      let existingFiles: DynamicFileData[] =
+        existingFile?.[dynamicFileField] || [];
       const fileIndex = existingFiles.findIndex((f) => f.name === dto.name);
 
       if (fileIndex >= 0) {
@@ -231,6 +262,11 @@ export class CourseFilesService {
         // Add new file
         existingFiles = [...existingFiles, { name: dto.name, fileData }];
       }
+
+      // Get template first if provided
+      const template = dto.templateId
+        ? await this.getTemplate(dto.templateId)
+        : undefined;
 
       // Update database
       const courseFiles = await this.prisma.courseFiles.upsert({
@@ -249,6 +285,58 @@ export class CourseFilesService {
         },
       });
 
+      // Validate template first if provided
+      if (dto.templateId) {
+        try {
+          const template = await this.prisma.fileTemplate.findUnique({
+            where: { id: dto.templateId },
+          });
+
+          if (!template) {
+            throw new NotFoundException('Template not found');
+          }
+
+          // Type guard for template
+          if (!this.isValidTemplate(template)) {
+            throw new BadRequestException('Invalid template data');
+          }
+
+          if (!template.status) {
+            throw new BadRequestException('Template is inactive');
+          }
+
+          // Validate file type
+          if (!template.fileTypes.includes(file.mimetype)) {
+            throw new BadRequestException(
+              'File type not allowed for this template',
+            );
+          }
+
+          // Validate file size
+          if (template.maxSize && file.size > template.maxSize) {
+            throw new BadRequestException('File size exceeds template limit');
+          }
+        } catch (error) {
+          if (
+            error instanceof NotFoundException ||
+            error instanceof BadRequestException
+          ) {
+            throw error;
+          }
+          throw new BadRequestException('Template validation failed');
+        }
+      }
+
+      // Track template usage if template was used
+      if (dto.templateId && courseFiles.id) {
+        await this.templateUsageService.trackUsage({
+          templateId: dto.templateId,
+          courseId,
+          userId,
+          fileId: courseFiles.id,
+        });
+      }
+
       return {
         success: true,
         message: 'Dynamic file uploaded successfully',
@@ -258,6 +346,7 @@ export class CourseFilesService {
           userId: courseFiles.userId,
           status: courseFiles.status,
           [dynamicFileField]: existingFiles,
+          template: template || undefined,
         },
       };
     } catch (error: unknown) {
@@ -272,12 +361,73 @@ export class CourseFilesService {
     }
   }
 
-  private isValidFile(file: any): file is Express.Multer.File {
+  private isValidFile(file: unknown): file is Express.Multer.File {
+    if (!file || typeof file !== 'object') return false;
+
+    const typedFile = file as { buffer?: unknown; originalname?: unknown };
+
     return (
-      file &&
-      typeof file === 'object' &&
-      'buffer' in file &&
-      'originalname' in file
+      Buffer.isBuffer(typedFile.buffer) &&
+      typeof typedFile.originalname === 'string'
     );
+  }
+
+  // Add type guard for template
+  private isValidTemplate(template: unknown): template is ValidTemplate {
+    if (!template || typeof template !== 'object') return false;
+
+    const t = template as ValidTemplate;
+    return (
+      typeof t.id === 'string' &&
+      typeof t.name === 'string' &&
+      (t.description === null || typeof t.description === 'string') &&
+      typeof t.isRequired === 'boolean' &&
+      Array.isArray(t.fileTypes) &&
+      typeof t.maxSize === 'number' &&
+      typeof t.department === 'string' &&
+      typeof t.status === 'boolean' &&
+      typeof t.createdBy === 'string' &&
+      t.createdAt instanceof Date &&
+      t.updatedAt instanceof Date
+    );
+  }
+
+  async getAvailableTemplates(department: string): Promise<FileTemplate[]> {
+    return this.prisma.fileTemplate.findMany({
+      where: {
+        department,
+        status: true, // Only active templates
+      },
+      orderBy: {
+        name: 'asc',
+      },
+    });
+  }
+
+  async validateTemplateRequirements(
+    templateId: string,
+    fileSize: number,
+    fileType: string,
+  ) {
+    const template = await this.getTemplate(templateId);
+
+    if (!template) {
+      return {
+        success: false,
+        message: 'Template not found',
+      };
+    }
+
+    return {
+      success: true,
+      isValid:
+        template.fileTypes.includes(fileType) &&
+        (!template.maxSize || fileSize <= template.maxSize),
+      requirements: {
+        fileTypes: template.fileTypes,
+        maxSize: template.maxSize,
+        isRequired: template.isRequired,
+      },
+    };
   }
 }

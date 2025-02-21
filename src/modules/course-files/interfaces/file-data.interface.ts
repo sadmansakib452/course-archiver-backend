@@ -1,3 +1,5 @@
+import { FileTemplate } from '@prisma/client';
+
 export interface FileData {
   url: string;
   version: number;
@@ -30,10 +32,12 @@ export interface CourseFileResponse {
     customFiles?: Array<{
       name: string;
       fileData: FileData;
+      template?: FileTemplate;
     }>;
     miscFiles?: Array<{
       name: string;
       fileData: FileData;
     }>;
+    template?: FileTemplate;
   };
 }

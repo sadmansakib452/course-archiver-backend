@@ -93,6 +93,8 @@ model User {
     deletedByUser User?           @relation("DeletedUsers", fields: [deletedBy], references: [id], onDelete: NoAction, onUpdate: NoAction)
     deletedUsers  User[]          @relation("DeletedUsers")
     PasswordReset PasswordReset[]
+    FileTemplate  FileTemplate[]
+    TemplateUsage TemplateUsage[]
 
     @@index([role, status])
     @@index([deletedAt])
@@ -132,8 +134,9 @@ model Course {
     courseFiles CourseFiles[]
 
     // Timestamps
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+    createdAt     DateTime        @default(now())
+    updatedAt     DateTime        @updatedAt
+    TemplateUsage TemplateUsage[]
 
     // Ensure unique course section per semester
     @@unique([code, section, semester, year])
@@ -345,4 +348,43 @@ model UserActivity {
 
     @@index([userId, action])
     @@index([createdAt])
+}
+
+// Add new model
+model FileTemplate {
+    id          String          @id @default(auto()) @map("_id") @db.ObjectId
+    name        String
+    description String?
+    isRequired  Boolean         @default(false)
+    fileTypes   String[] // ["pdf", "doc", "docx"]
+    maxSize     Int             @default(10485760) // Default 10MB
+    department  String
+    status      Boolean         @default(true)
+    createdBy   String          @db.ObjectId
+    createdAt   DateTime        @default(now())
+    updatedAt   DateTime        @updatedAt
+    usages      TemplateUsage[]
+
+    user User @relation(fields: [createdBy], references: [id])
+
+    @@index([department])
+    @@index([status])
+}
+
+// Add template usage tracking
+model TemplateUsage {
+    id         String   @id @default(auto()) @map("_id") @db.ObjectId
+    templateId String   @db.ObjectId
+    courseId   String   @db.ObjectId
+    userId     String   @db.ObjectId
+    fileId     String   @db.ObjectId
+    usedAt     DateTime @default(now())
+
+    template FileTemplate @relation(fields: [templateId], references: [id])
+    course   Course       @relation(fields: [courseId], references: [id])
+    user     User         @relation(fields: [userId], references: [id])
+
+    @@index([templateId])
+    @@index([courseId])
+    @@index([userId])
 }

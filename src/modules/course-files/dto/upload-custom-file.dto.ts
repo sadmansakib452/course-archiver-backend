@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsMongoId } from 'class-validator';
 
 export class UploadCustomFileDto {
   @ApiProperty({
@@ -9,6 +9,14 @@ export class UploadCustomFileDto {
   @IsString()
   @IsNotEmpty()
   name: string;
+
+  @ApiProperty({
+    description: 'Template ID if using a template',
+    required: false,
+  })
+  @IsMongoId()
+  @IsOptional()
+  templateId?: string;
 
   @ApiProperty({ description: 'Comments for the file' })
   @IsString()

@@ -11,6 +11,9 @@ import {
   FileTypeValidator,
   MaxFileSizeValidator,
   Req,
+  Get,
+  Query,
+  NotFoundException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
@@ -29,6 +32,7 @@ import { memoryStorage } from 'multer';
 import { Request } from 'express';
 import { User } from '@prisma/client';
 import { UploadDynamicFileDto } from './dto/upload-dynamic-file.dto';
+import { FileTemplate } from './interfaces/file-template.interface';
 
 @ApiTags('Course Files')
 @Controller('course-files')
@@ -66,7 +70,10 @@ export class CourseFilesController {
       storage: memoryStorage(),
       fileFilter: (req, file, cb) => {
         if (!file.originalname.match(/\.(pdf|doc|docx)$/)) {
-          return cb(new BadRequestException('Only PDF and Word files are allowed'), false);
+          return cb(
+            new BadRequestException('Only PDF and Word files are allowed'),
+            false,
+          );
         }
         cb(null, true);
       },
@@ -84,7 +91,12 @@ export class CourseFilesController {
     if (!file) {
       throw new BadRequestException('File is required');
     }
-    return this.courseFilesService.uploadFixedFile(courseId, file, dto, req.user.id);
+    return this.courseFilesService.uploadFixedFile(
+      courseId,
+      file,
+      dto,
+      req.user.id,
+    );
   }
 
   @Post(':courseId/dynamic')
@@ -121,6 +133,51 @@ export class CourseFilesController {
       file,
       dto,
       req.user.id,
+    );
+  }
+
+  @Get('templates')
+  @ApiOperation({ summary: 'Get available templates for the department' })
+  async getTemplates(
+    @Query('department') department: string,
+  ): Promise<FileTemplate[]> {
+    return this.courseFilesService.getAvailableTemplates(department);
+  }
+
+  @Get('templates/:id/requirements')
+  @ApiOperation({ summary: 'Get template requirements' })
+  async getTemplateRequirements(@Param('id') id: string) {
+    const template = await this.courseFilesService.getTemplate(id);
+
+    if (!template) {
+      throw new NotFoundException('Template not found');
+    }
+
+    return {
+      fileTypes: template.fileTypes,
+      maxSize: template.maxSize,
+      isRequired: template.isRequired,
+      description: template.description || undefined,
+    };
+  }
+
+  @Get('templates/department/:department')
+  @ApiOperation({ summary: 'Get templates by department' })
+  async getTemplatesByDepartment(@Param('department') department: string) {
+    return this.courseFilesService.getAvailableTemplates(department);
+  }
+
+  @Get('templates/:id/validate')
+  @ApiOperation({ summary: 'Validate file against template' })
+  async validateFileTemplate(
+    @Param('id') templateId: string,
+    @Query('size') fileSize: number,
+    @Query('type') fileType: string,
+  ) {
+    return this.courseFilesService.validateTemplateRequirements(
+      templateId,
+      fileSize,
+      fileType,
     );
   }
 }
