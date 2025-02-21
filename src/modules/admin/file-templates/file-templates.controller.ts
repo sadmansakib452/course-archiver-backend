@@ -51,7 +51,7 @@ export class FileTemplatesController {
     @Query('status') status?: string,
   ): Promise<TemplateListResponseDto> {
     return this.fileTemplatesService.listTemplates({
-      status: status === 'true',
+      status: status ? status === 'true' : undefined,
       page: pagination.page,
       limit: pagination.limit,
     });

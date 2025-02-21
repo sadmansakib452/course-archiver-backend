@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { TemplateDto } from './template.dto';
 
 export class TemplateUsageDto {
   @ApiProperty()
@@ -17,7 +18,7 @@ export class TemplateUsageDto {
   usedAt: Date;
 }
 
-export class TemplateStatsDto {
+export class TemplateStatsDto extends TemplateDto {
   @ApiProperty()
   templateId: string;
 
